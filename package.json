@@ -22,6 +22,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "peerjs": "^1.5.5",
     "phaser": "^3.80.1"
   },
   "devDependencies": {
