@@ -28,7 +28,7 @@ export const COLORS = {
   board: 0xd4a574,            // Light wood
   boardDark: 0xb8956a,        // Darker wood grain
   boardBorder: 0xc9a227,      // Gold border
-  boardFrame: 0x000000,       // Black frame
+  boardFrame: 0x3d2314,       // Dark wood frame (like real carrom)
   
   // Pockets
   pocket: 0x1a1a1a,           // Black pocket

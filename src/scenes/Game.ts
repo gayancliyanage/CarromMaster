@@ -207,43 +207,43 @@ export class GameScene extends Phaser.Scene {
     const frameWidth = 30;
     const graphics = this.add.graphics();
 
-    // 1. Thick black frame (outermost)
+    // 1. Dark wood frame (outermost) - like real carrom board
     graphics.fillStyle(COLORS.boardFrame);
     graphics.fillRoundedRect(
       x - playArea / 2 - frameWidth, 
       y - playArea / 2 - frameWidth, 
       playArea + frameWidth * 2, 
       playArea + frameWidth * 2,
-      4
+      6
     );
 
-    // 2. Gold border
-    graphics.fillStyle(COLORS.boardBorder);
-    graphics.fillRoundedRect(
-      x - playArea / 2 - 4, 
-      y - playArea / 2 - 4, 
-      playArea + 8, 
-      playArea + 8,
-      2
-    );
-
-    // 3. Main board surface (playing area)
+    // 2. Main board surface (playing area) - light wood
     graphics.fillStyle(COLORS.board);
     graphics.fillRect(x - playArea / 2, y - playArea / 2, playArea, playArea);
 
-    // 4. Wood grain effect
-    graphics.lineStyle(1, COLORS.boardDark, 0.1);
-    for (let i = 0; i < 20; i++) {
-      const lineY = y - playArea / 2 + (playArea / 20) * i;
+    // 3. Wood grain effect (subtle)
+    graphics.lineStyle(1, COLORS.boardDark, 0.08);
+    for (let i = 0; i < 25; i++) {
+      const lineY = y - playArea / 2 + (playArea / 25) * i;
       graphics.beginPath();
       graphics.moveTo(x - playArea / 2, lineY);
       graphics.lineTo(x + playArea / 2, lineY);
       graphics.strokePath();
     }
 
-    // 5. Inner decorative border
-    const innerMargin = 25;
-    graphics.lineStyle(2, COLORS.boardDark, 0.5);
+    // 4. Black border lines (like real carrom board)
+    const borderInset = 15;
+    graphics.lineStyle(3, 0x000000, 1);
+    graphics.strokeRect(
+      x - playArea / 2 + borderInset, 
+      y - playArea / 2 + borderInset, 
+      playArea - borderInset * 2, 
+      playArea - borderInset * 2
+    );
+
+    // 5. Inner decorative border (thinner)
+    const innerMargin = 35;
+    graphics.lineStyle(2, 0x000000, 0.8);
     graphics.strokeRect(
       x - playArea / 2 + innerMargin, 
       y - playArea / 2 + innerMargin, 
