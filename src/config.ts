@@ -18,20 +18,20 @@ export const FRICTION_AIR = 0.015;
 export const RESTITUTION = 0.85;
 export const STRIKER_MAX_POWER = 22;
 
-// Colors - Premium wooden theme (matching reference image)
+// Colors - Premium casino-quality theme (rich mahogany/rosewood)
 export const COLORS = {
   // Background
   bgGradientTop: 0x4a2020,    // Dark maroon top
   bgGradientBottom: 0x1a0808, // Very dark maroon bottom
   
-  // Board - Light natural wood tones
-  board: 0xe8d4a8,            // Light warm wood
-  boardLight: 0xf0deb8,       // Lighter wood grain
-  boardDark: 0x8b6914,        // Golden brown for lines
-  boardBorder: 0x8b6914,      // Golden border lines
-  boardFrame: 0xc9a227,       // Golden frame
-  boardFrameDark: 0x8b6914,   // Darker gold for depth
-  boardFrameLight: 0xdbb84d,  // Lighter gold highlight
+  // Board - Rich mahogany/rosewood tones
+  board: 0x7B3D26,            // Rich mahogany mid
+  boardLight: 0x8B4533,       // Lighter mahogany
+  boardDark: 0x5D2A1A,        // Dark rosewood
+  boardBorder: 0xD4AF37,      // Golden border lines
+  boardFrame: 0xD4AF37,       // Golden frame
+  boardFrameDark: 0x8B6914,   // Darker gold for depth
+  boardFrameLight: 0xF4D03F,  // Lighter gold highlight
   
   // Pockets
   pocket: 0x1a0f08,           // Very dark hole
@@ -47,9 +47,11 @@ export const COLORS = {
   queenRing: 0xb02a37,        // Darker red ring
   
   // Striker
-  striker: 0xfff9e6,          // Cream white striker
-  strikerRing: 0xc9a227,      // Golden ring
-  strikerPattern: 0x8b6914,   // Golden pattern
+  striker: 0xFFF8E7,          // Premium cream/ivory striker
+  strikerRing: 0xD4AF37,      // Golden ring
+  strikerPattern: 0xD4AF37,   // Golden pattern
+  strikerGlow: 0xFFD700,      // Bright gold glow
+  strikerStar: 0xFFD700,      // Star/bolt icon
   
   // UI
   aimLine: 0x00ff88,

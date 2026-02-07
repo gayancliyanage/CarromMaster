@@ -469,60 +469,83 @@ export class GameScene extends Phaser.Scene {
     }) as Piece;
     this.striker.gameData = { type: 'striker', pocketed: false };
     this.strikerGraphics = this.add.container(x, y);
+    
+    // Golden glow effect (behind striker)
+    const glow = this.add.graphics();
+    glow.fillStyle(0xFFD700, 0.15);
+    glow.fillCircle(0, 0, STRIKER_RADIUS + 12);
+    glow.fillStyle(0xFFD700, 0.2);
+    glow.fillCircle(0, 0, STRIKER_RADIUS + 8);
+    glow.fillStyle(0xFFD700, 0.25);
+    glow.fillCircle(0, 0, STRIKER_RADIUS + 4);
+    this.strikerGraphics.add(glow);
+    
     const graphics = this.add.graphics();
     
     // Shadow
     graphics.fillStyle(0x000000, 0.4);
-    graphics.fillCircle(2, 2, STRIKER_RADIUS);
+    graphics.fillCircle(3, 3, STRIKER_RADIUS);
     
-    // Main body - cream/ivory color
-    graphics.fillStyle(0xfff5e0);
+    // Main body - premium cream/ivory color
+    graphics.fillStyle(0xFFF8E7);
     graphics.fillCircle(0, 0, STRIKER_RADIUS);
     
-    // Outer ring
-    graphics.lineStyle(2.5, 0x8b6914, 0.6);
+    // Outer golden ring
+    graphics.lineStyle(3, 0xD4AF37, 0.9);
     graphics.strokeCircle(0, 0, STRIKER_RADIUS - 1);
     
-    // Inner decorative ring
-    graphics.lineStyle(1.5, 0x8b6914, 0.4);
+    // Inner decorative golden ring
+    graphics.lineStyle(2, 0xD4AF37, 0.6);
     graphics.strokeCircle(0, 0, STRIKER_RADIUS * 0.7);
     
-    // Draw floral/mandala pattern
-    this.drawFloralPattern(graphics, 0, 0, STRIKER_RADIUS * 0.5);
+    // Draw lightning bolt icon
+    this.drawLightningBolt(graphics, 0, 0, STRIKER_RADIUS * 0.5);
     
-    // Highlight
-    graphics.fillStyle(0xffffff, 0.3);
+    // Highlight for 3D effect
+    graphics.fillStyle(0xffffff, 0.4);
     graphics.fillCircle(-STRIKER_RADIUS * 0.25, -STRIKER_RADIUS * 0.25, STRIKER_RADIUS * 0.2);
     
+    // Bright spot
+    graphics.fillStyle(0xffffff, 0.5);
+    graphics.fillCircle(-STRIKER_RADIUS * 0.3, -STRIKER_RADIUS * 0.3, STRIKER_RADIUS * 0.08);
+    
     this.strikerGraphics.add(graphics);
+    
+    // Add pulsing glow animation
+    this.tweens.add({
+      targets: glow,
+      alpha: { from: 1, to: 0.6 },
+      duration: 800,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut'
+    });
   }
   
-  private drawFloralPattern(graphics: Phaser.GameObjects.Graphics, cx: number, cy: number, radius: number): void {
-    const petals = 8;
-    const petalLength = radius * 0.8;
-    const petalWidth = radius * 0.3;
+  private drawLightningBolt(graphics: Phaser.GameObjects.Graphics, cx: number, cy: number, size: number): void {
+    // Lightning bolt shape
+    const points = [
+      { x: cx - size * 0.1, y: cy - size * 0.9 },
+      { x: cx + size * 0.4, y: cy - size * 0.1 },
+      { x: cx + size * 0.05, y: cy - size * 0.1 },
+      { x: cx + size * 0.3, y: cy + size * 0.9 },
+      { x: cx - size * 0.2, y: cy + size * 0.15 },
+      { x: cx + size * 0.1, y: cy + size * 0.15 },
+    ];
     
-    graphics.lineStyle(1, 0x8b6914, 0.5);
+    graphics.fillStyle(0xFFD700, 0.9);
+    graphics.beginPath();
+    graphics.moveTo(points[0].x, points[0].y);
+    graphics.lineTo(points[1].x, points[1].y);
+    graphics.lineTo(points[2].x, points[2].y);
+    graphics.lineTo(points[3].x, points[3].y);
+    graphics.lineTo(points[4].x, points[4].y);
+    graphics.lineTo(points[5].x, points[5].y);
+    graphics.closePath();
+    graphics.fillPath();
     
-    // Draw petal shapes
-    for (let i = 0; i < petals; i++) {
-      const angle = (i * Math.PI * 2) / petals;
-      const x1 = cx + Math.cos(angle) * petalLength;
-      const y1 = cy + Math.sin(angle) * petalLength;
-      
-      // Petal line
-      graphics.beginPath();
-      graphics.moveTo(cx, cy);
-      graphics.lineTo(x1, y1);
-      graphics.strokePath();
-      
-      // Small circle at petal tip
-      graphics.strokeCircle(x1, y1, 2);
-    }
-    
-    // Center circle
-    graphics.lineStyle(1, 0x8b6914, 0.6);
-    graphics.strokeCircle(cx, cy, radius * 0.25);
+    graphics.lineStyle(1, 0xD4AF37, 0.8);
+    graphics.strokePath();
   }
 
   private createUI(): void {
