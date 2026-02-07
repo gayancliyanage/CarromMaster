@@ -856,10 +856,6 @@ export class GameScene extends Phaser.Scene {
         // Wall collision
         if (labelA === 'wall' || labelB === 'wall') {
           this.playSound('wall');
-          
-          // Find the non-wall body for visual effect
-          const pieceBody = labelA === 'wall' ? pair.bodyB : pair.bodyA;
-          this.createWallBounceEffect(pieceBody.position.x, pieceBody.position.y);
         } 
         // Piece-to-piece or striker-to-piece collision
         else if ((labelA === 'piece' || labelA === 'striker') && 
@@ -1035,7 +1031,7 @@ export class GameScene extends Phaser.Scene {
         this.striker.position.x, this.striker.position.y,
         pocket.x, pocket.y
       );
-      if (dist < POCKET_RADIUS - 5) {
+      if (dist < POCKET_RADIUS + 8) {
         this.pocketStriker();
         break;
       }
@@ -1050,7 +1046,7 @@ export class GameScene extends Phaser.Scene {
           piece.position.x, piece.position.y,
           pocket.x, pocket.y
         );
-        if (dist < POCKET_RADIUS - 3) {
+        if (dist < POCKET_RADIUS + 10) {
           this.pocketPiece(piece, pocket);
           break;
         }
