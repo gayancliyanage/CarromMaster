@@ -865,10 +865,6 @@ export class GameScene extends Phaser.Scene {
         else if ((labelA === 'piece' || labelA === 'striker') && 
                  (labelB === 'piece' || labelB === 'striker')) {
           this.playSound('hit');
-          this.createHitEffect(
-            (pair.bodyA.position.x + pair.bodyB.position.x) / 2,
-            (pair.bodyA.position.y + pair.bodyB.position.y) / 2
-          );
         }
       });
     });
