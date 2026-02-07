@@ -209,12 +209,11 @@ export class MenuScene extends Phaser.Scene {
     inputHitArea.setInteractive({ useHandCursor: true });
     inputHitArea.on('pointerdown', () => this.focusHtmlInput());
 
-    // Join button
-    const joinBtn = this.add.graphics();
-    joinBtn.fillStyle(0x44aa44);
-    joinBtn.fillRoundedRect(-80, 40, 160, 45, 10);
-    joinBtn.fillStyle(0xffffff, 0.15);
-    joinBtn.fillRoundedRect(-75, 43, 150, 15, 6);
+    // Join button - using rectangle for better hit detection
+    const joinBtn = this.add.rectangle(0, 62, 160, 45, 0x44aa44);
+    joinBtn.setStrokeStyle(2, 0x66cc66);
+    joinBtn.setInteractive({ useHandCursor: true });
+    joinBtn.on('pointerdown', () => this.joinGame());
     
     const joinText = this.add.text(0, 62, '✓ JOIN GAME', {
       font: 'bold 16px Arial',
@@ -222,28 +221,21 @@ export class MenuScene extends Phaser.Scene {
     });
     joinText.setOrigin(0.5);
 
-    const joinHit = this.add.zone(0, 62, 160, 45);
-    joinHit.setInteractive({ useHandCursor: true });
-    joinHit.on('pointerdown', () => this.joinGame());
-
-    // Cancel button
-    const cancelBtn = this.add.graphics();
-    cancelBtn.fillStyle(0x664444);
-    cancelBtn.fillRoundedRect(-60, 100, 120, 35, 8);
+    // Cancel button - using rectangle for better hit detection
+    const cancelBtn = this.add.rectangle(0, 117, 120, 35, 0x664444);
+    cancelBtn.setStrokeStyle(1, 0x886666);
+    cancelBtn.setInteractive({ useHandCursor: true });
+    cancelBtn.on('pointerdown', () => this.hideJoinInput());
     
     const cancelText = this.add.text(0, 117, '✕ Cancel', {
       font: '14px Arial',
       color: '#ffffff',
     });
     cancelText.setOrigin(0.5);
-    
-    const cancelHit = this.add.zone(0, 117, 120, 35);
-    cancelHit.setInteractive({ useHandCursor: true });
-    cancelHit.on('pointerdown', () => this.hideJoinInput());
 
     this.inputContainer.add([
       overlay, panel, title, instructions, inputBox, tapHint, 
-      inputHitArea, joinBtn, joinText, joinHit, cancelBtn, cancelText, cancelHit
+      inputHitArea, joinBtn, joinText, cancelBtn, cancelText
     ]);
   }
 
@@ -362,10 +354,11 @@ export class MenuScene extends Phaser.Scene {
     codeText.setOrigin(0.5);
     codeText.setName('codeText');
 
-    // Copy Code button
-    const copyCodeBtn = this.add.graphics();
-    copyCodeBtn.fillStyle(0x4466aa);
-    copyCodeBtn.fillRoundedRect(-70, 5, 140, 38, 8);
+    // Copy Code button - using rectangle for better hit detection
+    const copyCodeBtn = this.add.rectangle(0, 24, 140, 38, 0x4466aa);
+    copyCodeBtn.setStrokeStyle(2, 0x6688cc);
+    copyCodeBtn.setInteractive({ useHandCursor: true });
+    copyCodeBtn.on('pointerdown', () => this.copyCode());
     
     const copyCodeText = this.add.text(0, 24, '📋 Copy Code', {
       font: 'bold 14px Arial',
@@ -374,10 +367,6 @@ export class MenuScene extends Phaser.Scene {
     copyCodeText.setOrigin(0.5);
     copyCodeText.setName('copyCodeText');
 
-    const copyCodeHit = this.add.zone(0, 24, 140, 38);
-    copyCodeHit.setInteractive({ useHandCursor: true });
-    copyCodeHit.on('pointerdown', () => this.copyCode());
-
     // Or divider
     const orText = this.add.text(0, 55, '— or —', {
       font: '12px Arial',
@@ -385,21 +374,19 @@ export class MenuScene extends Phaser.Scene {
     });
     orText.setOrigin(0.5);
 
-    // Copy Link button
-    const copyLinkBtn = this.add.graphics();
-    copyLinkBtn.fillStyle(0x6644aa);
-    copyLinkBtn.fillRoundedRect(-70, 75, 140, 38, 8);
+    // Share/Copy Link button
+    const hasShareAPI = !!navigator.share;
+    const copyLinkBtn = this.add.rectangle(0, 94, 140, 38, 0x6644aa);
+    copyLinkBtn.setStrokeStyle(2, 0x8866cc);
+    copyLinkBtn.setInteractive({ useHandCursor: true });
+    copyLinkBtn.on('pointerdown', () => this.shareOrCopyLink());
     
-    const copyLinkText = this.add.text(0, 94, '🔗 Copy Link', {
+    const copyLinkText = this.add.text(0, 94, hasShareAPI ? '📤 Share' : '🔗 Copy Link', {
       font: 'bold 14px Arial',
       color: '#ffffff',
     });
     copyLinkText.setOrigin(0.5);
     copyLinkText.setName('copyLinkText');
-
-    const copyLinkHit = this.add.zone(0, 94, 140, 38);
-    copyLinkHit.setInteractive({ useHandCursor: true });
-    copyLinkHit.on('pointerdown', () => this.copyLink());
 
     // Status
     const waitStatus = this.add.text(0, 135, '⏳ Waiting for opponent...', {
@@ -409,27 +396,24 @@ export class MenuScene extends Phaser.Scene {
     waitStatus.setOrigin(0.5);
     waitStatus.setName('waitStatus');
 
-    // Cancel button
-    const cancelBtn = this.add.graphics();
-    cancelBtn.fillStyle(0x664444);
-    cancelBtn.fillRoundedRect(-60, 160, 120, 35, 8);
+    // Cancel button - using rectangle for better hit detection
+    const cancelBtn = this.add.rectangle(0, 177, 120, 35, 0x664444);
+    cancelBtn.setStrokeStyle(1, 0x886666);
+    cancelBtn.setInteractive({ useHandCursor: true });
+    cancelBtn.on('pointerdown', () => this.cancelWaiting());
 
     const cancelWait = this.add.text(0, 177, '✕ Cancel', {
       font: '14px Arial',
       color: '#ffffff',
     });
     cancelWait.setOrigin(0.5);
-    
-    const cancelHit = this.add.zone(0, 177, 120, 35);
-    cancelHit.setInteractive({ useHandCursor: true });
-    cancelHit.on('pointerdown', () => this.cancelWaiting());
 
     this.waitingContainer.add([
       overlay, panel, waitingTitle, shareLabel, codeBox, codeText,
-      copyCodeBtn, copyCodeText, copyCodeHit,
+      copyCodeBtn, copyCodeText,
       orText,
-      copyLinkBtn, copyLinkText, copyLinkHit,
-      waitStatus, cancelBtn, cancelWait, cancelHit
+      copyLinkBtn, copyLinkText,
+      waitStatus, cancelBtn, cancelWait
     ]);
   }
 
@@ -507,15 +491,45 @@ export class MenuScene extends Phaser.Scene {
     });
   }
 
+  private shareOrCopyLink(): void {
+    const link = this.networkManager.getShareableLink();
+    const code = this.currentGameCode;
+    
+    // Try native share first (works great on mobile)
+    if (navigator.share) {
+      navigator.share({
+        title: 'CarromMaster Game',
+        text: `Join my Carrom game! Code: ${code}`,
+        url: link,
+      }).then(() => {
+        const copyLinkText = this.waitingContainer.getByName('copyLinkText') as Phaser.GameObjects.Text;
+        if (copyLinkText) {
+          copyLinkText.setText('✅ Shared!');
+          this.time.delayedCall(2000, () => {
+            copyLinkText.setText('📤 Share');
+          });
+        }
+      }).catch((err) => {
+        // User cancelled or share failed - fallback to copy
+        if (err.name !== 'AbortError') {
+          this.copyLink();
+        }
+      });
+    } else {
+      this.copyLink();
+    }
+  }
+
   private copyLink(): void {
     const link = this.networkManager.getShareableLink();
+    const hasShareAPI = !!navigator.share;
     
     this.copyToClipboard(link).then((success) => {
       const copyLinkText = this.waitingContainer.getByName('copyLinkText') as Phaser.GameObjects.Text;
       if (copyLinkText) {
         copyLinkText.setText(success ? '✅ Copied!' : '❌ Failed');
         this.time.delayedCall(2000, () => {
-          copyLinkText.setText('🔗 Copy Link');
+          copyLinkText.setText(hasShareAPI ? '📤 Share' : '🔗 Copy Link');
         });
       }
     });
