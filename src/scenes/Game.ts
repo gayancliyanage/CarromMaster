@@ -14,6 +14,7 @@ import {
   INITIAL_POSITIONS,
 } from '../config';
 import { NetworkManager, GameMessage } from '../network/NetworkManager';
+import { BoardRenderer } from './BoardRenderer';
 
 interface Piece extends MatterJS.BodyType {
   gameData?: {
@@ -284,163 +285,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   private createBoard(): void {
-    const x = this.boardCenterX;
-    const y = this.boardCenterY;
-    const size = BOARD_SIZE;
-    const playArea = size - 50;
-    const frameWidth = 28;
-    const graphics = this.add.graphics();
-
-    // Outer golden frame with gradient effect
-    graphics.fillStyle(0x8b6914); // Darker gold base
-    graphics.fillRoundedRect(x - playArea / 2 - frameWidth - 2, y - playArea / 2 - frameWidth - 2, playArea + frameWidth * 2 + 4, playArea + frameWidth * 2 + 4, 6);
-    
-    // Main golden frame
-    graphics.fillStyle(0xc9a227); // Golden frame
-    graphics.fillRoundedRect(x - playArea / 2 - frameWidth, y - playArea / 2 - frameWidth, playArea + frameWidth * 2, playArea + frameWidth * 2, 4);
-    
-    // Inner frame highlight
-    graphics.fillStyle(0xdbb84d); // Lighter gold
-    graphics.fillRoundedRect(x - playArea / 2 - frameWidth + 3, y - playArea / 2 - frameWidth + 3, playArea + frameWidth * 2 - 6, 3, 2);
-    graphics.fillRoundedRect(x - playArea / 2 - frameWidth + 3, y - playArea / 2 - frameWidth + 3, 3, playArea + frameWidth * 2 - 6, 2);
-
-    // Board surface - warm wood color
-    graphics.fillStyle(0xe8d4a8);
-    graphics.fillRect(x - playArea / 2, y - playArea / 2, playArea, playArea);
-
-    // Subtle wood grain lines (horizontal)
-    graphics.lineStyle(1, 0xd4c090, 0.3);
-    for (let i = 0; i < 40; i++) {
-      const lineY = y - playArea / 2 + (playArea / 40) * i;
-      graphics.beginPath();
-      graphics.moveTo(x - playArea / 2, lineY);
-      graphics.lineTo(x + playArea / 2, lineY);
-      graphics.strokePath();
-    }
-    
-    // Vertical grain variation
-    graphics.lineStyle(1, 0xddc8a0, 0.15);
-    for (let i = 0; i < 20; i++) {
-      const lineX = x - playArea / 2 + (playArea / 20) * i;
-      graphics.beginPath();
-      graphics.moveTo(lineX, y - playArea / 2);
-      graphics.lineTo(lineX, y + playArea / 2);
-      graphics.strokePath();
-    }
-
-    // Outer boundary line
-    const outerInset = 15;
-    graphics.lineStyle(2, 0x8b6914, 0.7);
-    graphics.strokeRect(x - playArea / 2 + outerInset, y - playArea / 2 + outerInset, playArea - outerInset * 2, playArea - outerInset * 2);
-
-    // Inner boundary line  
-    const innerInset = 35;
-    graphics.lineStyle(2, 0x8b6914, 0.5);
-    graphics.strokeRect(x - playArea / 2 + innerInset, y - playArea / 2 + innerInset, playArea - innerInset * 2, playArea - innerInset * 2);
-
-    // Corner circles (small decorative)
-    const cornerOffset = playArea / 2 - innerInset - 25;
-    graphics.lineStyle(1.5, 0x8b6914, 0.5);
-    graphics.strokeCircle(x - cornerOffset, y - cornerOffset, 10);
-    graphics.strokeCircle(x + cornerOffset, y - cornerOffset, 10);
-    graphics.strokeCircle(x - cornerOffset, y + cornerOffset, 10);
-    graphics.strokeCircle(x + cornerOffset, y + cornerOffset, 10);
-
-    this.drawCenterDesign(graphics, x, y);
-    this.drawCornerLines(graphics, x, y, size);
-    this.drawBaselines(graphics, x, y, size);
+    // Use the new BoardRenderer for pixel-perfect design
+    const boardRenderer = new BoardRenderer(this, this.boardCenterX, this.boardCenterY);
+    boardRenderer.render();
+    this.pockets = boardRenderer.getPockets();
     this.createWalls();
-  }
-
-  private drawCenterDesign(graphics: Phaser.GameObjects.Graphics, x: number, y: number): void {
-    // Outer circle
-    graphics.lineStyle(3, 0x8b6914, 0.8);
-    graphics.strokeCircle(x, y, 75);
-    
-    // Second circle
-    graphics.lineStyle(2, 0x8b6914, 0.6);
-    graphics.strokeCircle(x, y, 60);
-
-    // Inner play circle (where pieces sit)
-    graphics.lineStyle(2, 0x8b6914, 0.5);
-    graphics.strokeCircle(x, y, 45);
-  }
-
-  private drawCornerLines(graphics: Phaser.GameObjects.Graphics, x: number, y: number, size: number): void {
-    const offset = size / 2 - 65;
-    const lineLength = 55;
-    
-    // Diagonal arrow lines pointing toward corners
-    graphics.lineStyle(2, 0x8b6914, 0.5);
-    const corners = [
-      { cx: x - offset + 20, cy: y - offset + 20, angle: Math.PI * 1.25 }, // Top-left
-      { cx: x + offset - 20, cy: y - offset + 20, angle: Math.PI * 1.75 }, // Top-right
-      { cx: x - offset + 20, cy: y + offset - 20, angle: Math.PI * 0.75 }, // Bottom-left
-      { cx: x + offset - 20, cy: y + offset - 20, angle: Math.PI * 0.25 }, // Bottom-right
-    ];
-    corners.forEach(({ cx, cy, angle }) => {
-      graphics.beginPath();
-      graphics.moveTo(cx, cy);
-      graphics.lineTo(cx + Math.cos(angle) * lineLength, cy + Math.sin(angle) * lineLength);
-      graphics.strokePath();
-      
-      // Small circle at inner end
-      graphics.lineStyle(1.5, 0x8b6914, 0.4);
-      graphics.strokeCircle(cx, cy, 6);
-      graphics.lineStyle(2, 0x8b6914, 0.5);
-    });
-  }
-
-  private drawBaselines(graphics: Phaser.GameObjects.Graphics, x: number, y: number, size: number): void {
-    const baselineOffset = size / 2 - 45;
-    const baselineWidth = 100;
-    const circleRadius = 14;
-    
-    // Bottom baseline (player's side)
-    graphics.lineStyle(2, 0x8b6914, 0.6);
-    graphics.beginPath();
-    graphics.moveTo(x - baselineWidth / 2, y + baselineOffset);
-    graphics.lineTo(x + baselineWidth / 2, y + baselineOffset);
-    graphics.strokePath();
-    // Base circles at ends
-    graphics.lineStyle(2, 0x8b6914, 0.5);
-    graphics.strokeCircle(x - baselineWidth / 2 - 5, y + baselineOffset, circleRadius);
-    graphics.strokeCircle(x + baselineWidth / 2 + 5, y + baselineOffset, circleRadius);
-    // Center base circle
-    graphics.strokeCircle(x, y + baselineOffset, circleRadius);
-    
-    // Top baseline
-    graphics.lineStyle(2, 0x8b6914, 0.6);
-    graphics.beginPath();
-    graphics.moveTo(x - baselineWidth / 2, y - baselineOffset);
-    graphics.lineTo(x + baselineWidth / 2, y - baselineOffset);
-    graphics.strokePath();
-    graphics.lineStyle(2, 0x8b6914, 0.5);
-    graphics.strokeCircle(x - baselineWidth / 2 - 5, y - baselineOffset, circleRadius);
-    graphics.strokeCircle(x + baselineWidth / 2 + 5, y - baselineOffset, circleRadius);
-    graphics.strokeCircle(x, y - baselineOffset, circleRadius);
-    
-    // Left baseline
-    graphics.lineStyle(2, 0x8b6914, 0.6);
-    graphics.beginPath();
-    graphics.moveTo(x - baselineOffset, y - baselineWidth / 2);
-    graphics.lineTo(x - baselineOffset, y + baselineWidth / 2);
-    graphics.strokePath();
-    graphics.lineStyle(2, 0x8b6914, 0.5);
-    graphics.strokeCircle(x - baselineOffset, y - baselineWidth / 2 - 5, circleRadius);
-    graphics.strokeCircle(x - baselineOffset, y + baselineWidth / 2 + 5, circleRadius);
-    graphics.strokeCircle(x - baselineOffset, y, circleRadius);
-    
-    // Right baseline
-    graphics.lineStyle(2, 0x8b6914, 0.6);
-    graphics.beginPath();
-    graphics.moveTo(x + baselineOffset, y - baselineWidth / 2);
-    graphics.lineTo(x + baselineOffset, y + baselineWidth / 2);
-    graphics.strokePath();
-    graphics.lineStyle(2, 0x8b6914, 0.5);
-    graphics.strokeCircle(x + baselineOffset, y - baselineWidth / 2 - 5, circleRadius);
-    graphics.strokeCircle(x + baselineOffset, y + baselineWidth / 2 + 5, circleRadius);
-    graphics.strokeCircle(x + baselineOffset, y, circleRadius);
   }
 
   private createWalls(): void {
@@ -482,34 +331,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   private createPockets(): void {
-    const x = this.boardCenterX;
-    const y = this.boardCenterY;
-    const playArea = BOARD_SIZE - 50;
-    const offset = playArea / 2 - 8;
-    this.pockets = [
-      { x: x - offset, y: y - offset },
-      { x: x + offset, y: y - offset },
-      { x: x - offset, y: y + offset },
-      { x: x + offset, y: y + offset },
-    ];
-    const graphics = this.add.graphics();
-    this.pockets.forEach(pocket => {
-      // Outer ring highlight
-      graphics.fillStyle(0x5c4030, 0.8);
-      graphics.fillCircle(pocket.x, pocket.y, POCKET_RADIUS + 6);
-      
-      // Dark wood ring
-      graphics.fillStyle(0x3d2817, 1);
-      graphics.fillCircle(pocket.x, pocket.y, POCKET_RADIUS + 3);
-      
-      // Deep black pocket hole
-      graphics.fillStyle(0x0d0805, 1);
-      graphics.fillCircle(pocket.x, pocket.y, POCKET_RADIUS);
-      
-      // Inner shadow for depth
-      graphics.fillStyle(0x000000, 0.7);
-      graphics.fillCircle(pocket.x + 1, pocket.y + 1, POCKET_RADIUS - 2);
-    });
+    // Pockets are now rendered by BoardRenderer in createBoard()
+    // This method is kept for compatibility but visuals are handled by BoardRenderer
   }
 
   private createPieces(): void {
@@ -556,16 +379,31 @@ export class GameScene extends Phaser.Scene {
     }
 
     const graphics = this.add.graphics();
-    graphics.fillStyle(0x000000, 0.3);
+    
+    // Shadow
+    graphics.fillStyle(0x000000, 0.4);
     graphics.fillCircle(2, 2, radius);
+    
+    // Main piece body
     graphics.fillStyle(mainColor);
     graphics.fillCircle(0, 0, radius);
-    graphics.lineStyle(2, ringColor);
+    
+    // Outer ring
+    graphics.lineStyle(2, ringColor, 0.9);
     graphics.strokeCircle(0, 0, radius - 1);
-    graphics.lineStyle(1.5, ringColor);
-    graphics.strokeCircle(0, 0, radius * 0.6);
-    graphics.fillStyle(highlightColor, 0.3);
-    graphics.fillCircle(-radius * 0.3, -radius * 0.3, radius * 0.25);
+    
+    // Middle ring
+    graphics.lineStyle(1.5, ringColor, 0.7);
+    graphics.strokeCircle(0, 0, radius * 0.65);
+    
+    // Inner ring
+    graphics.lineStyle(1, ringColor, 0.5);
+    graphics.strokeCircle(0, 0, radius * 0.35);
+    
+    // Highlight for 3D effect
+    graphics.fillStyle(highlightColor, 0.25);
+    graphics.fillCircle(-radius * 0.25, -radius * 0.25, radius * 0.3);
+    
     container.add(graphics);
   }
 
@@ -632,17 +470,59 @@ export class GameScene extends Phaser.Scene {
     this.striker.gameData = { type: 'striker', pocketed: false };
     this.strikerGraphics = this.add.container(x, y);
     const graphics = this.add.graphics();
-    graphics.fillStyle(0x000000, 0.3);
+    
+    // Shadow
+    graphics.fillStyle(0x000000, 0.4);
     graphics.fillCircle(2, 2, STRIKER_RADIUS);
-    graphics.fillStyle(COLORS.striker);
+    
+    // Main body - cream/ivory color
+    graphics.fillStyle(0xfff5e0);
     graphics.fillCircle(0, 0, STRIKER_RADIUS);
-    graphics.lineStyle(3, COLORS.strikerRing);
-    graphics.strokeCircle(0, 0, STRIKER_RADIUS - 2);
-    graphics.fillStyle(COLORS.strikerStar);
-    this.drawStar(graphics, 0, 0, 5, 8, 4);
-    graphics.fillStyle(0xffffff, 0.4);
-    graphics.fillCircle(-STRIKER_RADIUS * 0.3, -STRIKER_RADIUS * 0.3, STRIKER_RADIUS * 0.25);
+    
+    // Outer ring
+    graphics.lineStyle(2.5, 0x8b6914, 0.6);
+    graphics.strokeCircle(0, 0, STRIKER_RADIUS - 1);
+    
+    // Inner decorative ring
+    graphics.lineStyle(1.5, 0x8b6914, 0.4);
+    graphics.strokeCircle(0, 0, STRIKER_RADIUS * 0.7);
+    
+    // Draw floral/mandala pattern
+    this.drawFloralPattern(graphics, 0, 0, STRIKER_RADIUS * 0.5);
+    
+    // Highlight
+    graphics.fillStyle(0xffffff, 0.3);
+    graphics.fillCircle(-STRIKER_RADIUS * 0.25, -STRIKER_RADIUS * 0.25, STRIKER_RADIUS * 0.2);
+    
     this.strikerGraphics.add(graphics);
+  }
+  
+  private drawFloralPattern(graphics: Phaser.GameObjects.Graphics, cx: number, cy: number, radius: number): void {
+    const petals = 8;
+    const petalLength = radius * 0.8;
+    const petalWidth = radius * 0.3;
+    
+    graphics.lineStyle(1, 0x8b6914, 0.5);
+    
+    // Draw petal shapes
+    for (let i = 0; i < petals; i++) {
+      const angle = (i * Math.PI * 2) / petals;
+      const x1 = cx + Math.cos(angle) * petalLength;
+      const y1 = cy + Math.sin(angle) * petalLength;
+      
+      // Petal line
+      graphics.beginPath();
+      graphics.moveTo(cx, cy);
+      graphics.lineTo(x1, y1);
+      graphics.strokePath();
+      
+      // Small circle at petal tip
+      graphics.strokeCircle(x1, y1, 2);
+    }
+    
+    // Center circle
+    graphics.lineStyle(1, 0x8b6914, 0.6);
+    graphics.strokeCircle(cx, cy, radius * 0.25);
   }
 
   private createUI(): void {
