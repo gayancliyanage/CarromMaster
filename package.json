@@ -1,0 +1,34 @@
+{
+  "name": "carrom-master",
+  "version": "0.1.0",
+  "description": "A cross-platform Carrom board game built with Phaser 3",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "build:mobile": "vite build && npx cap sync",
+    "ios": "npx cap open ios",
+    "android": "npx cap open android"
+  },
+  "keywords": [
+    "carrom",
+    "game",
+    "phaser",
+    "board-game",
+    "multiplayer"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "phaser": "^3.80.1"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^6.0.0",
+    "@capacitor/cli": "^6.0.0",
+    "@capacitor/core": "^6.0.0",
+    "@capacitor/ios": "^6.0.0",
+    "typescript": "^5.4.0",
+    "vite": "^5.4.0"
+  }
+}
