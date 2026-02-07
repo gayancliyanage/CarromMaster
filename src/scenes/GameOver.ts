@@ -1,45 +1,44 @@
 import Phaser from 'phaser';
 import { GAME_WIDTH, GAME_HEIGHT, COLORS } from '../config';
+import { LeaderboardService } from '../services/LeaderboardService';
 
 interface GameOverData {
   winner: 'white' | 'black';
   whiteScore: number;
   blackScore: number;
   isHumanWinner: boolean;
+  mode?: 'cpu' | 'multiplayer-host' | 'multiplayer-guest';
 }
 
 export class GameOverScene extends Phaser.Scene {
+  private leaderboardService: LeaderboardService;
+  private nameInput: HTMLInputElement | null = null;
+  private gameData!: GameOverData;
+  private nameEntryContainer!: Phaser.GameObjects.Container;
+  private showingNameEntry = false;
+
   constructor() {
     super({ key: 'GameOver' });
+    this.leaderboardService = LeaderboardService.getInstance();
   }
 
   create(data: GameOverData): void {
+    this.gameData = data;
     const centerX = GAME_WIDTH / 2;
     const centerY = GAME_HEIGHT / 2;
 
-    // Background gradient
+    // Background
     const bg = this.add.graphics();
-    if (data.isHumanWinner) {
-      // Victory gradient (green tones)
-      bg.fillStyle(0x1a3d1a, 0.98);
-    } else {
-      // Defeat gradient (red tones)
-      bg.fillStyle(0x3d1a1a, 0.98);
-    }
+    bg.fillStyle(data.isHumanWinner ? 0x1a3d1a : 0x3d1a1a, 0.98);
     bg.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
 
-    // Emoji and message based on outcome
     const emoji = data.isHumanWinner ? '🏆' : '😔';
     const message = data.isHumanWinner ? 'YOU WIN!' : 'CPU WINS';
     const messageColor = data.isHumanWinner ? '#ffd700' : '#ff6666';
     
-    // Trophy/emoji
-    const emojiText = this.add.text(centerX, centerY - 180, emoji, {
-      font: '80px Arial',
-    });
+    const emojiText = this.add.text(centerX, centerY - 180, emoji, { font: '80px Arial' });
     emojiText.setOrigin(0.5);
     
-    // Add subtle animation to emoji
     this.tweens.add({
       targets: emojiText,
       y: centerY - 190,
@@ -49,7 +48,6 @@ export class GameOverScene extends Phaser.Scene {
       ease: 'Sine.easeInOut',
     });
 
-    // Winner text
     const winnerText = this.add.text(centerX, centerY - 80, message, {
       font: 'bold 52px Arial',
       color: messageColor,
@@ -58,125 +56,267 @@ export class GameOverScene extends Phaser.Scene {
     });
     winnerText.setOrigin(0.5);
 
-    // Subtitle
-    const subtitle = data.isHumanWinner 
-      ? 'Congratulations! 🎉' 
-      : 'Better luck next time!';
-    const subtitleText = this.add.text(centerX, centerY - 30, subtitle, {
+    const subtitle = data.isHumanWinner ? 'Congratulations! 🎉' : 'Better luck next time!';
+    this.add.text(centerX, centerY - 30, subtitle, {
       font: '20px Arial',
       color: '#cccccc',
-    });
-    subtitleText.setOrigin(0.5);
+    }).setOrigin(0.5);
 
     // Score panel
     const scorePanel = this.add.graphics();
     scorePanel.fillStyle(0x000000, 0.4);
     scorePanel.fillRoundedRect(centerX - 120, centerY + 10, 240, 80, 10);
     
-    // Score display
-    const yourScore = this.add.text(centerX - 60, centerY + 35, `You`, {
-      font: '16px Arial',
-      color: '#ffffff',
-    });
-    yourScore.setOrigin(0.5);
-    
-    const yourScoreNum = this.add.text(centerX - 60, centerY + 60, `${data.whiteScore}`, {
+    this.add.text(centerX - 60, centerY + 35, 'You', { font: '16px Arial', color: '#ffffff' }).setOrigin(0.5);
+    this.add.text(centerX - 60, centerY + 60, `${data.whiteScore}`, {
       font: 'bold 28px Arial',
-      color: COLORS.whitePiece.toString(16).padStart(6, '0').replace(/^/, '#'),
-    });
-    yourScoreNum.setOrigin(0.5);
+      color: '#f5f5dc',
+    }).setOrigin(0.5);
     
-    const vsText = this.add.text(centerX, centerY + 50, 'vs', {
-      font: '16px Arial',
-      color: '#888888',
-    });
-    vsText.setOrigin(0.5);
+    this.add.text(centerX, centerY + 50, 'vs', { font: '16px Arial', color: '#888888' }).setOrigin(0.5);
     
-    const cpuScore = this.add.text(centerX + 60, centerY + 35, `CPU`, {
-      font: '16px Arial',
-      color: '#ffffff',
-    });
-    cpuScore.setOrigin(0.5);
-    
-    const cpuScoreNum = this.add.text(centerX + 60, centerY + 60, `${data.blackScore}`, {
+    this.add.text(centerX + 60, centerY + 35, 'CPU', { font: '16px Arial', color: '#ffffff' }).setOrigin(0.5);
+    this.add.text(centerX + 60, centerY + 60, `${data.blackScore}`, {
       font: 'bold 28px Arial',
       color: '#444444',
-    });
-    cpuScoreNum.setOrigin(0.5);
+    }).setOrigin(0.5);
 
-    // Play Again button
-    const playAgainButton = this.add.graphics();
-    playAgainButton.fillStyle(data.isHumanWinner ? 0x44aa44 : 0xaa4444);
-    playAgainButton.fillRoundedRect(centerX - 100, centerY + 120, 200, 50, 10);
-    
-    const playAgainHitArea = this.add.rectangle(centerX, centerY + 145, 200, 50);
-    playAgainHitArea.setInteractive({ useHandCursor: true });
-    
-    const playAgainText = this.add.text(centerX, centerY + 145, '🎮 PLAY AGAIN', {
-      font: 'bold 18px Arial',
-      color: '#ffffff',
-    });
-    playAgainText.setOrigin(0.5);
-
-    playAgainHitArea.on('pointerover', () => {
-      playAgainButton.clear();
-      playAgainButton.fillStyle(data.isHumanWinner ? 0x55bb55 : 0xbb5555);
-      playAgainButton.fillRoundedRect(centerX - 105, centerY + 117, 210, 56, 10);
-    });
-
-    playAgainHitArea.on('pointerout', () => {
-      playAgainButton.clear();
-      playAgainButton.fillStyle(data.isHumanWinner ? 0x44aa44 : 0xaa4444);
-      playAgainButton.fillRoundedRect(centerX - 100, centerY + 120, 200, 50, 10);
-    });
-
-    playAgainHitArea.on('pointerdown', () => {
-      this.cameras.main.fadeOut(300);
-      this.time.delayedCall(300, () => {
-        this.scene.start('Game');
-      });
-    });
-
-    // Menu button
-    const menuButton = this.add.graphics();
-    menuButton.fillStyle(0x444444);
-    menuButton.fillRoundedRect(centerX - 100, centerY + 185, 200, 50, 10);
-    
-    const menuHitArea = this.add.rectangle(centerX, centerY + 210, 200, 50);
-    menuHitArea.setInteractive({ useHandCursor: true });
-    
-    const menuText = this.add.text(centerX, centerY + 210, '🏠 MAIN MENU', {
-      font: 'bold 18px Arial',
-      color: '#ffffff',
-    });
-    menuText.setOrigin(0.5);
-
-    menuHitArea.on('pointerover', () => {
-      menuButton.clear();
-      menuButton.fillStyle(0x555555);
-      menuButton.fillRoundedRect(centerX - 105, centerY + 182, 210, 56, 10);
-    });
-
-    menuHitArea.on('pointerout', () => {
-      menuButton.clear();
-      menuButton.fillStyle(0x444444);
-      menuButton.fillRoundedRect(centerX - 100, centerY + 185, 200, 50, 10);
-    });
-
-    menuHitArea.on('pointerdown', () => {
-      this.cameras.main.fadeOut(300);
-      this.time.delayedCall(300, () => {
-        this.scene.start('Menu');
-      });
-    });
-
-    // Add confetti effect for winner
+    // If winner, show name entry prompt
     if (data.isHumanWinner) {
+      this.createNameEntry(centerX, centerY);
       this.createConfetti();
+    } else {
+      this.createButtons(centerX, centerY);
     }
 
-    // Fade in
     this.cameras.main.fadeIn(300);
+
+    this.events.on('shutdown', () => {
+      this.removeHtmlInput();
+    });
+  }
+
+  private createNameEntry(centerX: number, centerY: number): void {
+    this.nameEntryContainer = this.add.container(centerX, centerY + 130);
+    this.showingNameEntry = true;
+
+    const panel = this.add.graphics();
+    panel.fillStyle(0x2a1a4a, 0.95);
+    panel.fillRoundedRect(-140, -20, 280, 130, 12);
+    panel.lineStyle(2, 0xffd700);
+    panel.strokeRoundedRect(-140, -20, 280, 130, 12);
+
+    const prompt = this.add.text(0, -5, '⭐ Enter your name for the leaderboard!', {
+      font: 'bold 13px Arial',
+      color: '#ffd700',
+    });
+    prompt.setOrigin(0.5);
+
+    // Input area (visual)
+    const inputBg = this.add.graphics();
+    inputBg.fillStyle(0x1a0a2e);
+    inputBg.fillRoundedRect(-100, 15, 200, 40, 8);
+    inputBg.lineStyle(2, 0x6644aa);
+    inputBg.strokeRoundedRect(-100, 15, 200, 40, 8);
+
+    const inputHint = this.add.text(0, 35, 'Tap to type', {
+      font: '14px Arial',
+      color: '#666666',
+    });
+    inputHint.setOrigin(0.5);
+    inputHint.setName('inputHint');
+
+    const inputHitArea = this.add.zone(0, 35, 200, 40);
+    inputHitArea.setInteractive({ useHandCursor: true });
+    inputHitArea.on('pointerdown', () => this.focusHtmlInput());
+
+    // Save button
+    const saveBtn = this.add.rectangle(0, 85, 120, 35, 0x44aa44);
+    saveBtn.setStrokeStyle(2, 0x66cc66);
+    saveBtn.setInteractive({ useHandCursor: true });
+    saveBtn.on('pointerdown', () => this.saveScore());
+
+    const saveText = this.add.text(0, 85, '✓ SAVE', {
+      font: 'bold 14px Arial',
+      color: '#ffffff',
+    });
+    saveText.setOrigin(0.5);
+
+    // Skip button
+    const skipText = this.add.text(120, 85, 'Skip →', {
+      font: '12px Arial',
+      color: '#888888',
+    });
+    skipText.setOrigin(0.5);
+    skipText.setInteractive({ useHandCursor: true });
+    skipText.on('pointerdown', () => this.skipNameEntry());
+
+    this.nameEntryContainer.add([panel, prompt, inputBg, inputHint, inputHitArea, saveBtn, saveText, skipText]);
+
+    // Auto-focus after a short delay
+    this.time.delayedCall(500, () => {
+      this.createHtmlInput();
+    });
+  }
+
+  private createHtmlInput(): void {
+    if (this.nameInput) return;
+
+    const canvas = this.game.canvas;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = rect.width / GAME_WIDTH;
+    const scaleY = rect.height / GAME_HEIGHT;
+    
+    const inputX = rect.left + (GAME_WIDTH / 2 - 95) * scaleX;
+    const inputY = rect.top + (GAME_HEIGHT / 2 + 140) * scaleY;
+    const inputWidth = 190 * scaleX;
+    const inputHeight = 35 * scaleY;
+
+    this.nameInput = document.createElement('input');
+    this.nameInput.type = 'text';
+    this.nameInput.maxLength = 12;
+    this.nameInput.placeholder = 'Your name';
+    this.nameInput.autocomplete = 'off';
+    this.nameInput.style.cssText = `
+      position: fixed;
+      left: ${inputX}px;
+      top: ${inputY}px;
+      width: ${inputWidth}px;
+      height: ${inputHeight}px;
+      font-size: ${16 * scaleY}px;
+      font-family: Arial, sans-serif;
+      text-align: center;
+      background: #2a1a4a;
+      border: 2px solid #8866cc;
+      border-radius: 8px;
+      color: #ffffff;
+      outline: none;
+      z-index: 1000;
+    `;
+
+    this.nameInput.addEventListener('input', () => {
+      const inputHint = this.nameEntryContainer.getByName('inputHint') as Phaser.GameObjects.Text;
+      if (inputHint && this.nameInput) {
+        inputHint.setVisible(this.nameInput.value.length === 0);
+      }
+    });
+
+    this.nameInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        this.saveScore();
+      }
+    });
+
+    document.body.appendChild(this.nameInput);
+  }
+
+  private focusHtmlInput(): void {
+    if (!this.nameInput) {
+      this.createHtmlInput();
+    }
+    if (this.nameInput) {
+      this.nameInput.focus();
+      const inputHint = this.nameEntryContainer.getByName('inputHint') as Phaser.GameObjects.Text;
+      if (inputHint) inputHint.setVisible(false);
+    }
+  }
+
+  private removeHtmlInput(): void {
+    if (this.nameInput) {
+      this.nameInput.remove();
+      this.nameInput = null;
+    }
+  }
+
+  private saveScore(): void {
+    const name = this.nameInput?.value?.trim() || 'Player';
+    const score = this.gameData.whiteScore;
+    const mode = this.gameData.mode?.startsWith('multiplayer') ? 'multiplayer' : 'cpu';
+    
+    const rank = this.leaderboardService.addEntry(name, score, mode as 'cpu' | 'multiplayer');
+    
+    this.removeHtmlInput();
+    this.showingNameEntry = false;
+    this.nameEntryContainer.destroy();
+    
+    // Show rank message
+    const centerX = GAME_WIDTH / 2;
+    const centerY = GAME_HEIGHT / 2;
+    
+    const rankMsg = this.add.text(centerX, centerY + 130, `🎉 You're #${rank} on the leaderboard!`, {
+      font: 'bold 18px Arial',
+      color: '#ffd700',
+      backgroundColor: '#00000088',
+      padding: { x: 15, y: 8 },
+    });
+    rankMsg.setOrigin(0.5);
+
+    this.time.delayedCall(1000, () => {
+      this.createButtons(centerX, centerY);
+    });
+  }
+
+  private skipNameEntry(): void {
+    this.removeHtmlInput();
+    this.showingNameEntry = false;
+    this.nameEntryContainer.destroy();
+    this.createButtons(GAME_WIDTH / 2, GAME_HEIGHT / 2);
+  }
+
+  private createButtons(centerX: number, centerY: number): void {
+    const buttonY = this.showingNameEntry ? centerY + 260 : centerY + 170;
+
+    // Play Again button
+    const playColor = this.gameData.isHumanWinner ? 0x44aa44 : 0xaa4444;
+    const playAgainBtn = this.add.rectangle(centerX, buttonY, 200, 50, playColor);
+    playAgainBtn.setStrokeStyle(2, this.gameData.isHumanWinner ? 0x66cc66 : 0xcc6666);
+    playAgainBtn.setInteractive({ useHandCursor: true });
+    playAgainBtn.on('pointerover', () => playAgainBtn.setFillStyle(this.gameData.isHumanWinner ? 0x55bb55 : 0xbb5555));
+    playAgainBtn.on('pointerout', () => playAgainBtn.setFillStyle(playColor));
+    playAgainBtn.on('pointerdown', () => {
+      this.removeHtmlInput();
+      this.cameras.main.fadeOut(300);
+      this.time.delayedCall(300, () => this.scene.start('Game', { mode: 'cpu' }));
+    });
+
+    this.add.text(centerX, buttonY, '🎮 PLAY AGAIN', {
+      font: 'bold 18px Arial',
+      color: '#ffffff',
+    }).setOrigin(0.5);
+
+    // Leaderboard button
+    const lbBtn = this.add.rectangle(centerX, buttonY + 60, 200, 45, 0x6644aa);
+    lbBtn.setStrokeStyle(2, 0x8866cc);
+    lbBtn.setInteractive({ useHandCursor: true });
+    lbBtn.on('pointerover', () => lbBtn.setFillStyle(0x7755bb));
+    lbBtn.on('pointerout', () => lbBtn.setFillStyle(0x6644aa));
+    lbBtn.on('pointerdown', () => {
+      this.removeHtmlInput();
+      this.cameras.main.fadeOut(200);
+      this.time.delayedCall(200, () => this.scene.start('Leaderboard'));
+    });
+
+    this.add.text(centerX, buttonY + 60, '🏆 LEADERBOARD', {
+      font: 'bold 16px Arial',
+      color: '#ffffff',
+    }).setOrigin(0.5);
+
+    // Menu button
+    const menuBtn = this.add.rectangle(centerX, buttonY + 115, 200, 45, 0x444444);
+    menuBtn.setStrokeStyle(2, 0x666666);
+    menuBtn.setInteractive({ useHandCursor: true });
+    menuBtn.on('pointerover', () => menuBtn.setFillStyle(0x555555));
+    menuBtn.on('pointerout', () => menuBtn.setFillStyle(0x444444));
+    menuBtn.on('pointerdown', () => {
+      this.removeHtmlInput();
+      this.cameras.main.fadeOut(300);
+      this.time.delayedCall(300, () => this.scene.start('Menu'));
+    });
+
+    this.add.text(centerX, buttonY + 115, '🏠 MAIN MENU', {
+      font: 'bold 16px Arial',
+      color: '#ffffff',
+    }).setOrigin(0.5);
   }
 
   private createConfetti(): void {

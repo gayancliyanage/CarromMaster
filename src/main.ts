@@ -4,11 +4,12 @@ import { BootScene } from './scenes/Boot';
 import { MenuScene } from './scenes/Menu';
 import { GameScene } from './scenes/Game';
 import { GameOverScene } from './scenes/GameOver';
+import { LeaderboardScene } from './scenes/Leaderboard';
 
 // Add scenes to config
 const config: Phaser.Types.Core.GameConfig = {
   ...gameConfig,
-  scene: [BootScene, MenuScene, GameScene, GameOverScene],
+  scene: [BootScene, MenuScene, GameScene, GameOverScene, LeaderboardScene],
 };
 
 // Create the game

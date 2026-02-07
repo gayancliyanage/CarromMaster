@@ -1213,6 +1213,7 @@ export class GameScene extends Phaser.Scene {
       whiteScore: finalWhiteScore,
       blackScore: finalBlackScore,
       isHumanWinner: winner === this.myColor,
+      mode: this.gameMode,
     });
   }
 }

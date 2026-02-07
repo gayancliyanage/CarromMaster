@@ -62,8 +62,8 @@ export class MenuScene extends Phaser.Scene {
     this.drawMiniBoard(centerX, centerY - 60);
 
     // Buttons
-    const buttonStartY = centerY + 140;
-    const buttonSpacing = 55;
+    const buttonStartY = centerY + 120;
+    const buttonSpacing = 48;
 
     // VS CPU Button
     this.createButton(centerX, buttonStartY, '🤖 VS CPU', 0x4a90d9, () => {
@@ -78,6 +78,12 @@ export class MenuScene extends Phaser.Scene {
     // Join Game Button
     this.createButton(centerX, buttonStartY + buttonSpacing * 2, '🔗 JOIN GAME', 0xaa8844, () => {
       this.showJoinInput();
+    });
+
+    // Leaderboard Button
+    this.createButton(centerX, buttonStartY + buttonSpacing * 3, '🏆 LEADERBOARD', 0x9944aa, () => {
+      this.cameras.main.fadeOut(200);
+      this.time.delayedCall(200, () => this.scene.start('Leaderboard'));
     });
 
     // Status text
