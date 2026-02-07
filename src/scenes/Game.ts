@@ -202,34 +202,53 @@ export class GameScene extends Phaser.Scene {
     const x = this.boardCenterX;
     const y = this.boardCenterY;
     const size = BOARD_SIZE;
+    const frameThickness = 20;
+    const halfBoard = size / 2 - 12; // Must match wall position
     const graphics = this.add.graphics();
 
-    // Outer frame (dark wood)
+    // Outer black frame (thick) - aligned with physics walls
     graphics.fillStyle(COLORS.boardFrame);
-    graphics.fillRoundedRect(x - size / 2 - 15, y - size / 2 - 15, size + 30, size + 30, 8);
+    graphics.fillRoundedRect(
+      x - halfBoard - frameThickness, 
+      y - halfBoard - frameThickness, 
+      (halfBoard + frameThickness) * 2, 
+      (halfBoard + frameThickness) * 2, 
+      4
+    );
 
-    // Gold border
+    // Gold border (inner edge of frame)
     graphics.fillStyle(COLORS.boardBorder);
-    graphics.fillRoundedRect(x - size / 2 - 8, y - size / 2 - 8, size + 16, size + 16, 6);
+    graphics.fillRoundedRect(
+      x - halfBoard - 4, 
+      y - halfBoard - 4, 
+      (halfBoard + 4) * 2, 
+      (halfBoard + 4) * 2, 
+      2
+    );
 
-    // Main board surface
+    // Main board surface (playing area)
     graphics.fillStyle(COLORS.board);
-    graphics.fillRect(x - size / 2, y - size / 2, size, size);
+    graphics.fillRect(x - halfBoard, y - halfBoard, halfBoard * 2, halfBoard * 2);
 
     // Wood grain effect (subtle lines)
     graphics.lineStyle(1, COLORS.boardDark, 0.1);
     for (let i = 0; i < 20; i++) {
-      const lineY = y - size / 2 + (size / 20) * i;
+      const lineY = y - halfBoard + (halfBoard * 2 / 20) * i;
       graphics.beginPath();
-      graphics.moveTo(x - size / 2, lineY);
-      graphics.lineTo(x + size / 2, lineY);
+      graphics.moveTo(x - halfBoard, lineY);
+      graphics.lineTo(x + halfBoard, lineY);
       graphics.strokePath();
     }
 
-    // Inner playing area border
-    const innerSize = size - 40;
+    // Inner playing area decorative border
+    const innerMargin = 25;
     graphics.lineStyle(2, COLORS.boardDark, 0.5);
-    graphics.strokeRect(x - innerSize / 2, y - innerSize / 2, innerSize, innerSize);
+    graphics.strokeRect(
+      x - halfBoard + innerMargin, 
+      y - halfBoard + innerMargin, 
+      (halfBoard - innerMargin) * 2, 
+      (halfBoard - innerMargin) * 2
+    );
 
     // Center design - decorative circles
     this.drawCenterDesign(graphics, x, y);
@@ -442,7 +461,7 @@ export class GameScene extends Phaser.Scene {
   private createPockets(): void {
     const x = this.boardCenterX;
     const y = this.boardCenterY;
-    const offset = BOARD_SIZE / 2 - 18;
+    const offset = BOARD_SIZE / 2 - 12; // Aligned with board edge
 
     this.pockets = [
       { x: x - offset, y: y - offset },
@@ -1031,7 +1050,7 @@ export class GameScene extends Phaser.Scene {
         this.striker.position.x, this.striker.position.y,
         pocket.x, pocket.y
       );
-      if (dist < POCKET_RADIUS + 8) {
+      if (dist < POCKET_RADIUS + 14) {
         this.pocketStriker();
         break;
       }
@@ -1046,7 +1065,7 @@ export class GameScene extends Phaser.Scene {
           piece.position.x, piece.position.y,
           pocket.x, pocket.y
         );
-        if (dist < POCKET_RADIUS + 10) {
+        if (dist < POCKET_RADIUS + 16) {
           this.pocketPiece(piece, pocket);
           break;
         }
