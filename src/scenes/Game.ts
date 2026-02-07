@@ -44,6 +44,11 @@ export class GameScene extends Phaser.Scene {
   private sliderMinX!: number;
   private sliderMaxX!: number;
   private strikerGraphics!: Phaser.GameObjects.Container;
+  private audioContext!: AudioContext;
+  private boardLeft!: number;
+  private boardRight!: number;
+  private boardTop!: number;
+  private boardBottom!: number;
 
   constructor() {
     super({ key: 'Game' });
@@ -54,6 +59,13 @@ export class GameScene extends Phaser.Scene {
     this.boardCenterY = GAME_HEIGHT / 2 - 30;
     this.strikerBaseY = this.boardCenterY + BOARD_SIZE / 2 - 35;
 
+    // Calculate board boundaries
+    const halfBoard = BOARD_SIZE / 2 - 10;
+    this.boardLeft = this.boardCenterX - halfBoard;
+    this.boardRight = this.boardCenterX + halfBoard;
+    this.boardTop = this.boardCenterY - halfBoard;
+    this.boardBottom = this.boardCenterY + halfBoard;
+
     // Reset game state
     this.pieces = [];
     this.whiteScore = 0;
@@ -61,6 +73,9 @@ export class GameScene extends Phaser.Scene {
     this.queenPocketed = false;
     this.currentPlayer = 'white';
     this.isStrikerMoving = false;
+
+    // Initialize audio
+    this.initAudio();
 
     // Draw background gradient
     this.createBackground();
@@ -95,6 +110,73 @@ export class GameScene extends Phaser.Scene {
 
     // Fade in
     this.cameras.main.fadeIn(300);
+  }
+
+  private initAudio(): void {
+    try {
+      this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    } catch (e) {
+      console.log('Audio not supported');
+    }
+  }
+
+  private playSound(type: 'hit' | 'pocket' | 'wall' | 'shoot'): void {
+    if (!this.audioContext) return;
+
+    try {
+      const oscillator = this.audioContext.createOscillator();
+      const gainNode = this.audioContext.createGain();
+
+      oscillator.connect(gainNode);
+      gainNode.connect(this.audioContext.destination);
+
+      switch (type) {
+        case 'hit':
+          // Short click sound for piece collision
+          oscillator.frequency.setValueAtTime(800, this.audioContext.currentTime);
+          oscillator.frequency.exponentialRampToValueAtTime(200, this.audioContext.currentTime + 0.1);
+          gainNode.gain.setValueAtTime(0.3, this.audioContext.currentTime);
+          gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.1);
+          oscillator.start(this.audioContext.currentTime);
+          oscillator.stop(this.audioContext.currentTime + 0.1);
+          break;
+
+        case 'wall':
+          // Thud sound for wall bounce
+          oscillator.frequency.setValueAtTime(150, this.audioContext.currentTime);
+          oscillator.frequency.exponentialRampToValueAtTime(50, this.audioContext.currentTime + 0.15);
+          gainNode.gain.setValueAtTime(0.4, this.audioContext.currentTime);
+          gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.15);
+          oscillator.type = 'sine';
+          oscillator.start(this.audioContext.currentTime);
+          oscillator.stop(this.audioContext.currentTime + 0.15);
+          break;
+
+        case 'pocket':
+          // Satisfying drop sound
+          oscillator.frequency.setValueAtTime(600, this.audioContext.currentTime);
+          oscillator.frequency.exponentialRampToValueAtTime(100, this.audioContext.currentTime + 0.3);
+          gainNode.gain.setValueAtTime(0.5, this.audioContext.currentTime);
+          gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.3);
+          oscillator.type = 'sine';
+          oscillator.start(this.audioContext.currentTime);
+          oscillator.stop(this.audioContext.currentTime + 0.3);
+          break;
+
+        case 'shoot':
+          // Whoosh sound for shooting
+          oscillator.frequency.setValueAtTime(200, this.audioContext.currentTime);
+          oscillator.frequency.exponentialRampToValueAtTime(400, this.audioContext.currentTime + 0.08);
+          gainNode.gain.setValueAtTime(0.2, this.audioContext.currentTime);
+          gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.08);
+          oscillator.type = 'triangle';
+          oscillator.start(this.audioContext.currentTime);
+          oscillator.stop(this.audioContext.currentTime + 0.08);
+          break;
+      }
+    } catch (e) {
+      // Ignore audio errors
+    }
   }
 
   private createBackground(): void {
@@ -250,32 +332,83 @@ export class GameScene extends Phaser.Scene {
   private createWalls(): void {
     const x = this.boardCenterX;
     const y = this.boardCenterY;
-    const size = BOARD_SIZE - 20;
-    const wallThickness = 15;
-    const gapSize = POCKET_RADIUS * 2 + 15;
+    const halfSize = BOARD_SIZE / 2 - 10;
+    const wallThickness = 30;
+    const pocketGap = POCKET_RADIUS + 10;
 
     const wallOptions = {
       isStatic: true,
-      friction: FRICTION,
-      restitution: RESTITUTION * 0.8,
+      friction: 0.1,
+      restitution: 0.9,
       label: 'wall',
     };
 
-    // Top wall segments
-    this.matter.add.rectangle(x - size / 4 - gapSize / 4, y - size / 2, size / 2 - gapSize, wallThickness, wallOptions);
-    this.matter.add.rectangle(x + size / 4 + gapSize / 4, y - size / 2, size / 2 - gapSize, wallThickness, wallOptions);
+    // Calculate wall segment length (total side minus two corner gaps)
+    const segmentLength = (halfSize * 2 - pocketGap * 2) / 2;
 
-    // Bottom wall segments
-    this.matter.add.rectangle(x - size / 4 - gapSize / 4, y + size / 2, size / 2 - gapSize, wallThickness, wallOptions);
-    this.matter.add.rectangle(x + size / 4 + gapSize / 4, y + size / 2, size / 2 - gapSize, wallThickness, wallOptions);
+    // Top wall - two segments with gaps at corners
+    this.matter.add.rectangle(
+      x - halfSize / 2 - pocketGap / 2 + segmentLength / 2 / 2,
+      y - halfSize - wallThickness / 2,
+      segmentLength,
+      wallThickness,
+      wallOptions
+    );
+    this.matter.add.rectangle(
+      x + halfSize / 2 + pocketGap / 2 - segmentLength / 2 / 2,
+      y - halfSize - wallThickness / 2,
+      segmentLength,
+      wallThickness,
+      wallOptions
+    );
 
-    // Left wall segments
-    this.matter.add.rectangle(x - size / 2, y - size / 4 - gapSize / 4, wallThickness, size / 2 - gapSize, wallOptions);
-    this.matter.add.rectangle(x - size / 2, y + size / 4 + gapSize / 4, wallThickness, size / 2 - gapSize, wallOptions);
+    // Bottom wall - two segments
+    this.matter.add.rectangle(
+      x - halfSize / 2 - pocketGap / 2 + segmentLength / 2 / 2,
+      y + halfSize + wallThickness / 2,
+      segmentLength,
+      wallThickness,
+      wallOptions
+    );
+    this.matter.add.rectangle(
+      x + halfSize / 2 + pocketGap / 2 - segmentLength / 2 / 2,
+      y + halfSize + wallThickness / 2,
+      segmentLength,
+      wallThickness,
+      wallOptions
+    );
 
-    // Right wall segments
-    this.matter.add.rectangle(x + size / 2, y - size / 4 - gapSize / 4, wallThickness, size / 2 - gapSize, wallOptions);
-    this.matter.add.rectangle(x + size / 2, y + size / 4 + gapSize / 4, wallThickness, size / 2 - gapSize, wallOptions);
+    // Left wall - two segments
+    this.matter.add.rectangle(
+      x - halfSize - wallThickness / 2,
+      y - halfSize / 2 - pocketGap / 2 + segmentLength / 2 / 2,
+      wallThickness,
+      segmentLength,
+      wallOptions
+    );
+    this.matter.add.rectangle(
+      x - halfSize - wallThickness / 2,
+      y + halfSize / 2 + pocketGap / 2 - segmentLength / 2 / 2,
+      wallThickness,
+      segmentLength,
+      wallOptions
+    );
+
+    // Right wall - two segments
+    this.matter.add.rectangle(
+      x + halfSize + wallThickness / 2,
+      y - halfSize / 2 - pocketGap / 2 + segmentLength / 2 / 2,
+      wallThickness,
+      segmentLength,
+      wallOptions
+    );
+    this.matter.add.rectangle(
+      x + halfSize + wallThickness / 2,
+      y + halfSize / 2 + pocketGap / 2 - segmentLength / 2 / 2,
+      wallThickness,
+      segmentLength,
+      wallOptions
+    );
   }
 
   private createPockets(): void {
@@ -337,6 +470,7 @@ export class GameScene extends Phaser.Scene {
       frictionAir: FRICTION_AIR,
       restitution: RESTITUTION,
       label: 'piece',
+      density: 0.001,
     }) as Piece;
 
     piece.gameData = { type, pocketed: false };
@@ -481,6 +615,7 @@ export class GameScene extends Phaser.Scene {
       frictionAir: FRICTION_AIR * 1.2,
       restitution: RESTITUTION,
       label: 'striker',
+      density: 0.002,
     }) as Piece;
 
     this.striker.gameData = { type: 'striker', pocketed: false };
@@ -681,11 +816,102 @@ export class GameScene extends Phaser.Scene {
 
     this.matter.body.setVelocity(this.striker, { x: velocityX, y: velocityY });
     this.isStrikerMoving = true;
+    this.playSound('shoot');
   }
 
   private setupCollisions(): void {
-    this.matter.world.on('collisionstart', () => {
-      // Play collision sound here
+    this.matter.world.on('collisionstart', (event: Phaser.Physics.Matter.Events.CollisionStartEvent) => {
+      event.pairs.forEach(pair => {
+        const labelA = (pair.bodyA as any).label;
+        const labelB = (pair.bodyB as any).label;
+
+        // Wall collision
+        if (labelA === 'wall' || labelB === 'wall') {
+          this.playSound('wall');
+          
+          // Find the non-wall body for visual effect
+          const pieceBody = labelA === 'wall' ? pair.bodyB : pair.bodyA;
+          this.createWallBounceEffect(pieceBody.position.x, pieceBody.position.y);
+        } 
+        // Piece-to-piece or striker-to-piece collision
+        else if ((labelA === 'piece' || labelA === 'striker') && 
+                 (labelB === 'piece' || labelB === 'striker')) {
+          this.playSound('hit');
+          this.createHitEffect(
+            (pair.bodyA.position.x + pair.bodyB.position.x) / 2,
+            (pair.bodyA.position.y + pair.bodyB.position.y) / 2
+          );
+        }
+      });
+    });
+  }
+
+  private createHitEffect(x: number, y: number): void {
+    // Quick flash effect at collision point
+    const flash = this.add.graphics();
+    flash.fillStyle(0xffffff, 0.6);
+    flash.fillCircle(x, y, 8);
+    
+    this.tweens.add({
+      targets: flash,
+      alpha: 0,
+      scaleX: 2,
+      scaleY: 2,
+      duration: 150,
+      onComplete: () => flash.destroy(),
+    });
+  }
+
+  private createWallBounceEffect(x: number, y: number): void {
+    // Spark effect when hitting wall
+    const spark = this.add.graphics();
+    spark.fillStyle(0xffd700, 0.8);
+    spark.fillCircle(x, y, 6);
+    
+    this.tweens.add({
+      targets: spark,
+      alpha: 0,
+      scaleX: 1.5,
+      scaleY: 1.5,
+      duration: 200,
+      onComplete: () => spark.destroy(),
+    });
+  }
+
+  private createPocketEffect(x: number, y: number, color: number): void {
+    // Particle burst effect
+    for (let i = 0; i < 12; i++) {
+      const angle = (i / 12) * Math.PI * 2;
+      const particle = this.add.graphics();
+      particle.fillStyle(color, 1);
+      particle.fillCircle(0, 0, 4);
+      particle.setPosition(x, y);
+      
+      this.tweens.add({
+        targets: particle,
+        x: x + Math.cos(angle) * 40,
+        y: y + Math.sin(angle) * 40,
+        alpha: 0,
+        scale: 0.3,
+        duration: 400,
+        ease: 'Quad.easeOut',
+        onComplete: () => particle.destroy(),
+      });
+    }
+
+    // Flash ring
+    const ring = this.add.graphics();
+    ring.lineStyle(4, 0xffd700, 1);
+    ring.strokeCircle(x, y, 10);
+    
+    this.tweens.add({
+      targets: ring,
+      scaleX: 3,
+      scaleY: 3,
+      alpha: 0,
+      duration: 400,
+      ease: 'Quad.easeOut',
+      onComplete: () => ring.destroy(),
     });
   }
 
@@ -702,6 +928,9 @@ export class GameScene extends Phaser.Scene {
       this.strikerGraphics.setPosition(this.striker.position.x, this.striker.position.y);
     }
 
+    // Keep pieces inside board boundaries
+    this.constrainPieces();
+
     // Check if all pieces stopped
     if (this.isStrikerMoving) {
       if (this.checkAllStopped()) {
@@ -712,6 +941,48 @@ export class GameScene extends Phaser.Scene {
 
     // Check pockets
     this.checkPockets();
+  }
+
+  private constrainPieces(): void {
+    const padding = 5;
+    const minX = this.boardLeft + padding;
+    const maxX = this.boardRight - padding;
+    const minY = this.boardTop + padding;
+    const maxY = this.boardBottom - padding;
+
+    // Constrain striker
+    const sx = this.striker.position.x;
+    const sy = this.striker.position.y;
+    if (sx < minX || sx > maxX || sy < minY || sy > maxY) {
+      this.matter.body.setPosition(this.striker, {
+        x: Phaser.Math.Clamp(sx, minX, maxX),
+        y: Phaser.Math.Clamp(sy, minY, maxY),
+      });
+      // Reverse velocity component that went out
+      const vel = this.striker.velocity;
+      this.matter.body.setVelocity(this.striker, {
+        x: sx < minX || sx > maxX ? -vel.x * 0.7 : vel.x,
+        y: sy < minY || sy > maxY ? -vel.y * 0.7 : vel.y,
+      });
+    }
+
+    // Constrain pieces
+    this.pieces.forEach(piece => {
+      if (piece.gameData?.pocketed) return;
+      const px = piece.position.x;
+      const py = piece.position.y;
+      if (px < minX || px > maxX || py < minY || py > maxY) {
+        this.matter.body.setPosition(piece, {
+          x: Phaser.Math.Clamp(px, minX, maxX),
+          y: Phaser.Math.Clamp(py, minY, maxY),
+        });
+        const vel = piece.velocity;
+        this.matter.body.setVelocity(piece, {
+          x: px < minX || px > maxX ? -vel.x * 0.7 : vel.x,
+          y: py < minY || py > maxY ? -vel.y * 0.7 : vel.y,
+        });
+      }
+    });
   }
 
   private checkAllStopped(): boolean {
@@ -756,7 +1027,7 @@ export class GameScene extends Phaser.Scene {
           pocket.x, pocket.y
         );
         if (dist < POCKET_RADIUS - 3) {
-          this.pocketPiece(piece);
+          this.pocketPiece(piece, pocket);
           break;
         }
       }
@@ -764,6 +1035,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private pocketStriker(): void {
+    this.playSound('pocket');
     this.matter.body.setPosition(this.striker, {
       x: this.strikerSliderX,
       y: this.strikerBaseY,
@@ -771,14 +1043,43 @@ export class GameScene extends Phaser.Scene {
     this.matter.body.setVelocity(this.striker, { x: 0, y: 0 });
   }
 
-  private pocketPiece(piece: Piece): void {
+  private pocketPiece(piece: Piece, pocket: { x: number; y: number }): void {
     if (!piece.gameData) return;
 
     piece.gameData.pocketed = true;
     
-    // Hide graphics
+    // Play sound
+    this.playSound('pocket');
+    
+    // Get color for effect
+    let color = 0xffffff;
+    if (piece.gameData.type === 'queen') {
+      color = COLORS.queen;
+    } else if (piece.gameData.type === 'white') {
+      color = COLORS.whitePiece;
+    } else {
+      color = COLORS.blackPiece;
+    }
+    
+    // Create pocket animation
+    this.createPocketEffect(pocket.x, pocket.y, color);
+    
+    // Animate piece shrinking into pocket
     if (piece.gameData.graphics) {
-      piece.gameData.graphics.setVisible(false);
+      this.tweens.add({
+        targets: piece.gameData.graphics,
+        x: pocket.x,
+        y: pocket.y,
+        scaleX: 0,
+        scaleY: 0,
+        duration: 300,
+        ease: 'Quad.easeIn',
+        onComplete: () => {
+          if (piece.gameData?.graphics) {
+            piece.gameData.graphics.setVisible(false);
+          }
+        },
+      });
     }
     
     this.matter.body.setPosition(piece, { x: -100, y: -100 });
