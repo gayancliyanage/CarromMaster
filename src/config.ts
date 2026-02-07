@@ -7,7 +7,7 @@ export const GAME_HEIGHT = 800;
 // Board dimensions
 export const BOARD_SIZE = 400;
 export const BOARD_MARGIN = 25;
-export const POCKET_RADIUS = 22;
+export const POCKET_RADIUS = 16;
 export const PIECE_RADIUS = 12;
 export const STRIKER_RADIUS = 16;
 export const QUEEN_RADIUS = 12;

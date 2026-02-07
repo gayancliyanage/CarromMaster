@@ -59,12 +59,12 @@ export class GameScene extends Phaser.Scene {
     this.boardCenterY = GAME_HEIGHT / 2 - 30;
     this.strikerBaseY = this.boardCenterY + BOARD_SIZE / 2 - 35;
 
-    // Calculate board boundaries
-    const halfBoard = BOARD_SIZE / 2 - 10;
-    this.boardLeft = this.boardCenterX - halfBoard;
-    this.boardRight = this.boardCenterX + halfBoard;
-    this.boardTop = this.boardCenterY - halfBoard;
-    this.boardBottom = this.boardCenterY + halfBoard;
+    // Calculate board boundaries (must match wall positions)
+    const halfBoard = BOARD_SIZE / 2 - 12;
+    this.boardLeft = this.boardCenterX - halfBoard + 10;
+    this.boardRight = this.boardCenterX + halfBoard - 10;
+    this.boardTop = this.boardCenterY - halfBoard + 10;
+    this.boardBottom = this.boardCenterY + halfBoard - 10;
 
     // Reset game state
     this.pieces = [];
@@ -330,85 +330,113 @@ export class GameScene extends Phaser.Scene {
   }
 
   private createWalls(): void {
-    const x = this.boardCenterX;
-    const y = this.boardCenterY;
-    const halfSize = BOARD_SIZE / 2 - 10;
-    const wallThickness = 30;
-    const pocketGap = POCKET_RADIUS + 10;
+    const cx = this.boardCenterX;
+    const cy = this.boardCenterY;
+    const halfBoard = BOARD_SIZE / 2 - 12; // Inner edge of board
+    const wallThickness = 20;
+    const pocketGap = POCKET_RADIUS + 8; // Gap at corners for pockets
 
     const wallOptions = {
       isStatic: true,
-      friction: 0.1,
-      restitution: 0.9,
+      friction: 0.05,
+      restitution: 0.85,
       label: 'wall',
     };
 
-    // Calculate wall segment length (total side minus two corner gaps)
-    const segmentLength = (halfSize * 2 - pocketGap * 2) / 2;
+    // Wall segment length = side length minus corner gaps
+    const sideLength = halfBoard * 2;
+    const segmentLen = (sideLength - pocketGap * 2) / 2;
 
-    // Top wall - two segments with gaps at corners
+    // Top wall - left segment
     this.matter.add.rectangle(
-      x - halfSize / 2 - pocketGap / 2 + segmentLength / 2 / 2,
-      y - halfSize - wallThickness / 2,
-      segmentLength,
+      cx - segmentLen / 2 - pocketGap / 2,
+      cy - halfBoard,
+      segmentLen,
       wallThickness,
       wallOptions
     );
+    // Top wall - right segment
     this.matter.add.rectangle(
-      x + halfSize / 2 + pocketGap / 2 - segmentLength / 2 / 2,
-      y - halfSize - wallThickness / 2,
-      segmentLength,
-      wallThickness,
-      wallOptions
-    );
-
-    // Bottom wall - two segments
-    this.matter.add.rectangle(
-      x - halfSize / 2 - pocketGap / 2 + segmentLength / 2 / 2,
-      y + halfSize + wallThickness / 2,
-      segmentLength,
-      wallThickness,
-      wallOptions
-    );
-    this.matter.add.rectangle(
-      x + halfSize / 2 + pocketGap / 2 - segmentLength / 2 / 2,
-      y + halfSize + wallThickness / 2,
-      segmentLength,
+      cx + segmentLen / 2 + pocketGap / 2,
+      cy - halfBoard,
+      segmentLen,
       wallThickness,
       wallOptions
     );
 
-    // Left wall - two segments
+    // Bottom wall - left segment
     this.matter.add.rectangle(
-      x - halfSize - wallThickness / 2,
-      y - halfSize / 2 - pocketGap / 2 + segmentLength / 2 / 2,
+      cx - segmentLen / 2 - pocketGap / 2,
+      cy + halfBoard,
+      segmentLen,
       wallThickness,
-      segmentLength,
       wallOptions
     );
+    // Bottom wall - right segment
     this.matter.add.rectangle(
-      x - halfSize - wallThickness / 2,
-      y + halfSize / 2 + pocketGap / 2 - segmentLength / 2 / 2,
+      cx + segmentLen / 2 + pocketGap / 2,
+      cy + halfBoard,
+      segmentLen,
       wallThickness,
-      segmentLength,
       wallOptions
     );
 
-    // Right wall - two segments
+    // Left wall - top segment
     this.matter.add.rectangle(
-      x + halfSize + wallThickness / 2,
-      y - halfSize / 2 - pocketGap / 2 + segmentLength / 2 / 2,
+      cx - halfBoard,
+      cy - segmentLen / 2 - pocketGap / 2,
       wallThickness,
-      segmentLength,
+      segmentLen,
       wallOptions
     );
+    // Left wall - bottom segment
     this.matter.add.rectangle(
-      x + halfSize + wallThickness / 2,
-      y + halfSize / 2 + pocketGap / 2 - segmentLength / 2 / 2,
+      cx - halfBoard,
+      cy + segmentLen / 2 + pocketGap / 2,
       wallThickness,
-      segmentLength,
+      segmentLen,
       wallOptions
     );
+
+    // Right wall - top segment
+    this.matter.add.rectangle(
+      cx + halfBoard,
+      cy - segmentLen / 2 - pocketGap / 2,
+      wallThickness,
+      segmentLen,
+      wallOptions
+    );
+    // Right wall - bottom segment
+    this.matter.add.rectangle(
+      cx + halfBoard,
+      cy + segmentLen / 2 + pocketGap / 2,
+      wallThickness,
+      segmentLen,
+      wallOptions
+    );
+
+    // Add corner blockers (angled pieces to guide balls toward pockets or bounce back)
+    const cornerOffset = halfBoard - 5;
+    const blockerSize = 15;
+    
+    // These small corner pieces prevent balls from getting stuck in corner gaps
+    const corners = [
+      { x: cx - cornerOffset, y: cy - cornerOffset, angle: Math.PI / 4 },
+      { x: cx + cornerOffset, y: cy - cornerOffset, angle: -Math.PI / 4 },
+      { x: cx - cornerOffset, y: cy + cornerOffset, angle: -Math.PI / 4 },
+      { x: cx + cornerOffset, y: cy + cornerOffset, angle: Math.PI / 4 },
+    ];
+
+    corners.forEach(corner => {
+      // Small angled deflector near each pocket
+      this.matter.add.rectangle(
+        corner.x + Math.cos(corner.angle + Math.PI) * 12,
+        corner.y + Math.sin(corner.angle + Math.PI) * 12,
+        blockerSize,
+        wallThickness / 2,
+        { ...wallOptions, angle: corner.angle }
+      );
+    });
   }
 
   private createPockets(): void {
