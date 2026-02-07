@@ -3,7 +3,6 @@ import {
   GAME_WIDTH,
   GAME_HEIGHT,
   BOARD_SIZE,
-  BOARD_MARGIN,
   POCKET_RADIUS,
   PIECE_RADIUS,
   STRIKER_RADIUS,
@@ -19,6 +18,7 @@ interface Piece extends MatterJS.BodyType {
   gameData?: {
     type: 'white' | 'black' | 'queen' | 'striker';
     pocketed: boolean;
+    graphics?: Phaser.GameObjects.Container;
   };
 }
 
@@ -27,9 +27,10 @@ export class GameScene extends Phaser.Scene {
   private pieces: Piece[] = [];
   private pockets: { x: number; y: number }[] = [];
   private isDragging = false;
+  private isAiming = false;
   private dragStart: { x: number; y: number } | null = null;
   private aimLine!: Phaser.GameObjects.Graphics;
-  private powerMeter!: Phaser.GameObjects.Graphics;
+  private powerIndicator!: Phaser.GameObjects.Graphics;
   private currentPlayer: 'white' | 'black' = 'white';
   private whiteScore = 0;
   private blackScore = 0;
@@ -38,8 +39,11 @@ export class GameScene extends Phaser.Scene {
   private boardCenterX!: number;
   private boardCenterY!: number;
   private isStrikerMoving = false;
-  private scoreText!: Phaser.GameObjects.Text;
-  private turnText!: Phaser.GameObjects.Text;
+  private strikerSlider!: Phaser.GameObjects.Container;
+  private strikerSliderX = 0;
+  private sliderMinX!: number;
+  private sliderMaxX!: number;
+  private strikerGraphics!: Phaser.GameObjects.Container;
 
   constructor() {
     super({ key: 'Game' });
@@ -47,8 +51,8 @@ export class GameScene extends Phaser.Scene {
 
   create(): void {
     this.boardCenterX = GAME_WIDTH / 2;
-    this.boardCenterY = GAME_HEIGHT / 2;
-    this.strikerBaseY = this.boardCenterY + BOARD_SIZE / 2 - 60;
+    this.boardCenterY = GAME_HEIGHT / 2 - 30;
+    this.strikerBaseY = this.boardCenterY + BOARD_SIZE / 2 - 35;
 
     // Reset game state
     this.pieces = [];
@@ -58,6 +62,9 @@ export class GameScene extends Phaser.Scene {
     this.currentPlayer = 'white';
     this.isStrikerMoving = false;
 
+    // Draw background gradient
+    this.createBackground();
+
     // Create the board
     this.createBoard();
 
@@ -66,6 +73,9 @@ export class GameScene extends Phaser.Scene {
 
     // Create pieces
     this.createPieces();
+
+    // Create striker slider
+    this.createStrikerSlider();
 
     // Create striker
     this.createStriker();
@@ -79,167 +89,199 @@ export class GameScene extends Phaser.Scene {
     // Set up collision detection
     this.setupCollisions();
 
+    // Create aim line graphics
+    this.aimLine = this.add.graphics();
+    this.powerIndicator = this.add.graphics();
+
     // Fade in
     this.cameras.main.fadeIn(300);
   }
 
+  private createBackground(): void {
+    // Purple gradient background
+    const bg = this.add.graphics();
+    
+    // Create gradient effect with rectangles
+    const steps = 20;
+    for (let i = 0; i < steps; i++) {
+      const ratio = i / steps;
+      const color = Phaser.Display.Color.Interpolate.ColorWithColor(
+        Phaser.Display.Color.IntegerToColor(COLORS.bgGradientTop),
+        Phaser.Display.Color.IntegerToColor(COLORS.bgGradientBottom),
+        steps,
+        i
+      );
+      bg.fillStyle(Phaser.Display.Color.GetColor(color.r, color.g, color.b));
+      bg.fillRect(0, (GAME_HEIGHT / steps) * i, GAME_WIDTH, GAME_HEIGHT / steps + 1);
+    }
+  }
+
   private createBoard(): void {
-    const graphics = this.add.graphics();
     const x = this.boardCenterX;
     const y = this.boardCenterY;
     const size = BOARD_SIZE;
+    const graphics = this.add.graphics();
 
-    // Outer border
+    // Outer frame (dark wood)
+    graphics.fillStyle(COLORS.boardFrame);
+    graphics.fillRoundedRect(x - size / 2 - 15, y - size / 2 - 15, size + 30, size + 30, 8);
+
+    // Gold border
     graphics.fillStyle(COLORS.boardBorder);
-    graphics.fillRoundedRect(x - size / 2 - 20, y - size / 2 - 20, size + 40, size + 40, 15);
+    graphics.fillRoundedRect(x - size / 2 - 8, y - size / 2 - 8, size + 16, size + 16, 6);
 
-    // Main board
+    // Main board surface
     graphics.fillStyle(COLORS.board);
-    graphics.fillRoundedRect(x - size / 2, y - size / 2, size, size, 10);
+    graphics.fillRect(x - size / 2, y - size / 2, size, size);
+
+    // Wood grain effect (subtle lines)
+    graphics.lineStyle(1, COLORS.boardDark, 0.1);
+    for (let i = 0; i < 20; i++) {
+      const lineY = y - size / 2 + (size / 20) * i;
+      graphics.beginPath();
+      graphics.moveTo(x - size / 2, lineY);
+      graphics.lineTo(x + size / 2, lineY);
+      graphics.strokePath();
+    }
 
     // Inner playing area border
-    graphics.lineStyle(3, COLORS.boardBorder);
-    const innerSize = size - 60;
-    graphics.strokeRoundedRect(x - innerSize / 2, y - innerSize / 2, innerSize, innerSize, 5);
+    const innerSize = size - 40;
+    graphics.lineStyle(2, COLORS.boardDark, 0.5);
+    graphics.strokeRect(x - innerSize / 2, y - innerSize / 2, innerSize, innerSize);
 
-    // Center circles
-    graphics.lineStyle(2, COLORS.boardBorder);
-    graphics.strokeCircle(x, y, 40);
-    graphics.strokeCircle(x, y, 20);
+    // Center design - decorative circles
+    this.drawCenterDesign(graphics, x, y);
 
-    // Baselines (where striker is placed)
-    graphics.lineStyle(2, COLORS.baseline);
-    const baselineOffset = size / 2 - 60;
-    
-    // Bottom baseline (player 1)
-    graphics.beginPath();
-    graphics.moveTo(x - 100, y + baselineOffset);
-    graphics.lineTo(x + 100, y + baselineOffset);
-    graphics.strokePath();
-    graphics.fillStyle(COLORS.baseline);
-    graphics.fillCircle(x - 100, y + baselineOffset, 5);
-    graphics.fillCircle(x + 100, y + baselineOffset, 5);
+    // Corner arrow lines pointing to pockets
+    this.drawCornerLines(graphics, x, y, size);
 
-    // Top baseline (player 2)
-    graphics.beginPath();
-    graphics.moveTo(x - 100, y - baselineOffset);
-    graphics.lineTo(x + 100, y - baselineOffset);
-    graphics.strokePath();
-    graphics.fillCircle(x - 100, y - baselineOffset, 5);
-    graphics.fillCircle(x + 100, y - baselineOffset, 5);
+    // Baselines
+    this.drawBaselines(graphics, x, y, size);
 
-    // Arrow indicators in corners
-    this.drawCornerArrows(graphics, x, y, size);
-
-    // Create board walls (physics boundaries)
+    // Create physics walls
     this.createWalls();
   }
 
-  private drawCornerArrows(graphics: Phaser.GameObjects.Graphics, x: number, y: number, size: number): void {
-    graphics.lineStyle(2, COLORS.boardBorder);
-    const offset = size / 2 - 80;
-    const arrowSize = 30;
+  private drawCenterDesign(graphics: Phaser.GameObjects.Graphics, x: number, y: number): void {
+    // Outer decorative circle
+    graphics.lineStyle(3, COLORS.boardDark, 0.4);
+    graphics.strokeCircle(x, y, 70);
+    
+    // Inner decorative pattern
+    graphics.lineStyle(2, COLORS.boardDark, 0.3);
+    graphics.strokeCircle(x, y, 55);
+    
+    // Center circle
+    graphics.lineStyle(2, COLORS.boardDark, 0.5);
+    graphics.strokeCircle(x, y, 25);
 
-    // Draw diagonal lines pointing to pockets
+    // Small center dot
+    graphics.fillStyle(COLORS.boardDark, 0.3);
+    graphics.fillCircle(x, y, 5);
+
+    // Decorative petals/arcs
+    for (let i = 0; i < 8; i++) {
+      const angle = (i * Math.PI) / 4;
+      const innerR = 30;
+      const outerR = 65;
+      graphics.lineStyle(1, COLORS.boardDark, 0.2);
+      graphics.beginPath();
+      graphics.moveTo(x + Math.cos(angle) * innerR, y + Math.sin(angle) * innerR);
+      graphics.lineTo(x + Math.cos(angle) * outerR, y + Math.sin(angle) * outerR);
+      graphics.strokePath();
+    }
+  }
+
+  private drawCornerLines(graphics: Phaser.GameObjects.Graphics, x: number, y: number, size: number): void {
+    const offset = size / 2 - 50;
+    const lineLength = 35;
+    graphics.lineStyle(2, COLORS.boardDark, 0.5);
+
+    // Diagonal lines pointing to corners
     const corners = [
-      { cx: x - offset, cy: y - offset, dx: -1, dy: -1 },
-      { cx: x + offset, cy: y - offset, dx: 1, dy: -1 },
-      { cx: x - offset, cy: y + offset, dx: -1, dy: 1 },
-      { cx: x + offset, cy: y + offset, dx: 1, dy: 1 },
+      { cx: x - offset, cy: y - offset, angle: Math.PI * 1.25 },
+      { cx: x + offset, cy: y - offset, angle: Math.PI * 1.75 },
+      { cx: x - offset, cy: y + offset, angle: Math.PI * 0.75 },
+      { cx: x + offset, cy: y + offset, angle: Math.PI * 0.25 },
     ];
 
-    corners.forEach(({ cx, cy, dx, dy }) => {
+    corners.forEach(({ cx, cy, angle }) => {
       graphics.beginPath();
       graphics.moveTo(cx, cy);
-      graphics.lineTo(cx + dx * arrowSize, cy + dy * arrowSize);
+      graphics.lineTo(
+        cx + Math.cos(angle) * lineLength,
+        cy + Math.sin(angle) * lineLength
+      );
       graphics.strokePath();
+      
+      // Small circles at the end
+      graphics.fillStyle(COLORS.boardDark, 0.5);
+      graphics.fillCircle(cx, cy, 4);
     });
+  }
+
+  private drawBaselines(graphics: Phaser.GameObjects.Graphics, x: number, y: number, size: number): void {
+    const baselineOffset = size / 2 - 35;
+    const baselineWidth = 120;
+
+    graphics.lineStyle(2, COLORS.boardDark, 0.6);
+
+    // Bottom baseline (current player)
+    graphics.beginPath();
+    graphics.moveTo(x - baselineWidth / 2, y + baselineOffset);
+    graphics.lineTo(x + baselineWidth / 2, y + baselineOffset);
+    graphics.strokePath();
+
+    // Baseline circles
+    graphics.fillStyle(COLORS.boardDark, 0.6);
+    graphics.fillCircle(x - baselineWidth / 2, y + baselineOffset, 5);
+    graphics.fillCircle(x + baselineWidth / 2, y + baselineOffset, 5);
+
+    // Top baseline
+    graphics.beginPath();
+    graphics.moveTo(x - baselineWidth / 2, y - baselineOffset);
+    graphics.lineTo(x + baselineWidth / 2, y - baselineOffset);
+    graphics.strokePath();
+
+    graphics.fillCircle(x - baselineWidth / 2, y - baselineOffset, 5);
+    graphics.fillCircle(x + baselineWidth / 2, y - baselineOffset, 5);
   }
 
   private createWalls(): void {
     const x = this.boardCenterX;
     const y = this.boardCenterY;
-    const size = BOARD_SIZE - 30;
-    const wallThickness = 20;
-    const gapSize = POCKET_RADIUS * 2 + 10; // Gap for pockets
+    const size = BOARD_SIZE - 20;
+    const wallThickness = 15;
+    const gapSize = POCKET_RADIUS * 2 + 15;
 
     const wallOptions = {
       isStatic: true,
       friction: FRICTION,
-      restitution: RESTITUTION,
+      restitution: RESTITUTION * 0.8,
       label: 'wall',
     };
 
-    // Create walls with gaps for pockets
-    // Top wall (two segments)
-    this.matter.add.rectangle(
-      x - size / 4 - gapSize / 4, 
-      y - size / 2, 
-      size / 2 - gapSize, 
-      wallThickness, 
-      wallOptions
-    );
-    this.matter.add.rectangle(
-      x + size / 4 + gapSize / 4, 
-      y - size / 2, 
-      size / 2 - gapSize, 
-      wallThickness, 
-      wallOptions
-    );
+    // Top wall segments
+    this.matter.add.rectangle(x - size / 4 - gapSize / 4, y - size / 2, size / 2 - gapSize, wallThickness, wallOptions);
+    this.matter.add.rectangle(x + size / 4 + gapSize / 4, y - size / 2, size / 2 - gapSize, wallThickness, wallOptions);
 
-    // Bottom wall (two segments)
-    this.matter.add.rectangle(
-      x - size / 4 - gapSize / 4, 
-      y + size / 2, 
-      size / 2 - gapSize, 
-      wallThickness, 
-      wallOptions
-    );
-    this.matter.add.rectangle(
-      x + size / 4 + gapSize / 4, 
-      y + size / 2, 
-      size / 2 - gapSize, 
-      wallThickness, 
-      wallOptions
-    );
+    // Bottom wall segments
+    this.matter.add.rectangle(x - size / 4 - gapSize / 4, y + size / 2, size / 2 - gapSize, wallThickness, wallOptions);
+    this.matter.add.rectangle(x + size / 4 + gapSize / 4, y + size / 2, size / 2 - gapSize, wallThickness, wallOptions);
 
-    // Left wall (two segments)
-    this.matter.add.rectangle(
-      x - size / 2, 
-      y - size / 4 - gapSize / 4, 
-      wallThickness, 
-      size / 2 - gapSize, 
-      wallOptions
-    );
-    this.matter.add.rectangle(
-      x - size / 2, 
-      y + size / 4 + gapSize / 4, 
-      wallThickness, 
-      size / 2 - gapSize, 
-      wallOptions
-    );
+    // Left wall segments
+    this.matter.add.rectangle(x - size / 2, y - size / 4 - gapSize / 4, wallThickness, size / 2 - gapSize, wallOptions);
+    this.matter.add.rectangle(x - size / 2, y + size / 4 + gapSize / 4, wallThickness, size / 2 - gapSize, wallOptions);
 
-    // Right wall (two segments)
-    this.matter.add.rectangle(
-      x + size / 2, 
-      y - size / 4 - gapSize / 4, 
-      wallThickness, 
-      size / 2 - gapSize, 
-      wallOptions
-    );
-    this.matter.add.rectangle(
-      x + size / 2, 
-      y + size / 4 + gapSize / 4, 
-      wallThickness, 
-      size / 2 - gapSize, 
-      wallOptions
-    );
+    // Right wall segments
+    this.matter.add.rectangle(x + size / 2, y - size / 4 - gapSize / 4, wallThickness, size / 2 - gapSize, wallOptions);
+    this.matter.add.rectangle(x + size / 2, y + size / 4 + gapSize / 4, wallThickness, size / 2 - gapSize, wallOptions);
   }
 
   private createPockets(): void {
     const x = this.boardCenterX;
     const y = this.boardCenterY;
-    const offset = BOARD_SIZE / 2 - 30;
+    const offset = BOARD_SIZE / 2 - 18;
 
     this.pockets = [
       { x: x - offset, y: y - offset },
@@ -249,10 +291,23 @@ export class GameScene extends Phaser.Scene {
     ];
 
     const graphics = this.add.graphics();
-    graphics.fillStyle(COLORS.pocket);
-    
+
     this.pockets.forEach(pocket => {
+      // Outer glow/highlight
+      graphics.fillStyle(COLORS.pocketHighlight, 0.6);
+      graphics.fillCircle(pocket.x, pocket.y, POCKET_RADIUS + 8);
+      
+      // Gold ring
+      graphics.fillStyle(COLORS.pocketRing);
+      graphics.fillCircle(pocket.x, pocket.y, POCKET_RADIUS + 4);
+      
+      // Black pocket hole
+      graphics.fillStyle(COLORS.pocket);
       graphics.fillCircle(pocket.x, pocket.y, POCKET_RADIUS);
+      
+      // Inner shadow effect
+      graphics.fillStyle(0x000000, 0.5);
+      graphics.fillCircle(pocket.x + 2, pocket.y + 2, POCKET_RADIUS - 3);
     });
   }
 
@@ -260,28 +315,23 @@ export class GameScene extends Phaser.Scene {
     const x = this.boardCenterX;
     const y = this.boardCenterY;
 
-    // Create queen (red piece in center)
-    this.createPiece(
-      x + INITIAL_POSITIONS.queen.x,
-      y + INITIAL_POSITIONS.queen.y,
-      'queen',
-      COLORS.queen
-    );
+    // Create queen (center)
+    this.createPiece(x, y, 'queen');
 
-    // Create white pieces
-    INITIAL_POSITIONS.white.forEach(pos => {
-      this.createPiece(x + pos.x, y + pos.y, 'white', COLORS.whitePiece);
+    // Create inner ring pieces
+    INITIAL_POSITIONS.innerRing.forEach(pos => {
+      this.createPiece(x + pos.x, y + pos.y, pos.color as 'white' | 'black');
     });
 
-    // Create black pieces
-    INITIAL_POSITIONS.black.forEach(pos => {
-      this.createPiece(x + pos.x, y + pos.y, 'black', COLORS.blackPiece);
+    // Create outer ring pieces
+    INITIAL_POSITIONS.outerRing.forEach(pos => {
+      this.createPiece(x + pos.x, y + pos.y, pos.color as 'white' | 'black');
     });
   }
 
-  private createPiece(x: number, y: number, type: 'white' | 'black' | 'queen', color: number): void {
-    const radius = type === 'queen' ? PIECE_RADIUS : PIECE_RADIUS;
-    
+  private createPiece(x: number, y: number, type: 'white' | 'black' | 'queen'): void {
+    const radius = PIECE_RADIUS;
+
     const piece = this.matter.add.circle(x, y, radius, {
       friction: FRICTION,
       frictionAir: FRICTION_AIR,
@@ -292,99 +342,259 @@ export class GameScene extends Phaser.Scene {
     piece.gameData = { type, pocketed: false };
     this.pieces.push(piece);
 
-    // Draw the piece
+    // Create graphics container
+    const container = this.add.container(x, y);
+    piece.gameData.graphics = container;
+
+    // Determine colors
+    let mainColor: number, ringColor: number, highlightColor: number;
+    if (type === 'queen') {
+      mainColor = COLORS.queen;
+      ringColor = COLORS.queenRing;
+      highlightColor = 0xff6666;
+    } else if (type === 'white') {
+      mainColor = COLORS.whitePiece;
+      ringColor = COLORS.whitePieceRing;
+      highlightColor = 0xffffff;
+    } else {
+      mainColor = COLORS.blackPiece;
+      ringColor = COLORS.blackPieceRing;
+      highlightColor = 0x555555;
+    }
+
     const graphics = this.add.graphics();
-    graphics.fillStyle(color);
+
+    // Shadow
+    graphics.fillStyle(0x000000, 0.3);
+    graphics.fillCircle(2, 2, radius);
+
+    // Main piece body
+    graphics.fillStyle(mainColor);
     graphics.fillCircle(0, 0, radius);
-    graphics.lineStyle(2, type === 'queen' ? 0xcc0000 : (type === 'white' ? 0xcccccc : 0x333333));
-    graphics.strokeCircle(0, 0, radius);
-    
-    // Add inner decoration
-    graphics.lineStyle(1, type === 'queen' ? 0xff6666 : (type === 'white' ? 0xeeeeee : 0x444444));
+
+    // Outer ring (3D effect)
+    graphics.lineStyle(2, ringColor);
+    graphics.strokeCircle(0, 0, radius - 1);
+
+    // Inner ring
+    graphics.lineStyle(1.5, ringColor);
     graphics.strokeCircle(0, 0, radius * 0.6);
 
-    const container = this.add.container(x, y, [graphics]);
+    // Highlight (top-left shine)
+    graphics.fillStyle(highlightColor, 0.3);
+    graphics.fillCircle(-radius * 0.3, -radius * 0.3, radius * 0.25);
+
+    container.add(graphics);
+  }
+
+  private createStrikerSlider(): void {
+    const sliderY = this.strikerBaseY + 50;
+    const sliderWidth = 180;
     
-    // Update container position each frame
-    this.events.on('update', () => {
-      if (!piece.gameData?.pocketed) {
-        container.setPosition(piece.position.x, piece.position.y);
-      }
+    this.sliderMinX = this.boardCenterX - sliderWidth / 2 + 20;
+    this.sliderMaxX = this.boardCenterX + sliderWidth / 2 - 20;
+    this.strikerSliderX = this.boardCenterX;
+
+    // Slider track
+    const track = this.add.graphics();
+    track.fillStyle(COLORS.sliderTrack, 0.8);
+    track.fillRoundedRect(
+      this.boardCenterX - sliderWidth / 2,
+      sliderY - 12,
+      sliderWidth,
+      24,
+      12
+    );
+    
+    // Inner track shadow
+    track.fillStyle(0x000000, 0.3);
+    track.fillRoundedRect(
+      this.boardCenterX - sliderWidth / 2 + 4,
+      sliderY - 8,
+      sliderWidth - 8,
+      16,
+      8
+    );
+
+    // Slider thumb (striker icon)
+    this.strikerSlider = this.add.container(this.strikerSliderX, sliderY);
+    
+    const thumbGraphics = this.add.graphics();
+    thumbGraphics.fillStyle(COLORS.strikerRing);
+    thumbGraphics.fillCircle(0, 0, 18);
+    thumbGraphics.fillStyle(COLORS.sliderThumb);
+    thumbGraphics.fillCircle(0, 0, 14);
+    
+    // Star icon
+    thumbGraphics.fillStyle(COLORS.strikerStar);
+    this.drawStar(thumbGraphics, 0, 0, 5, 6, 3);
+    
+    this.strikerSlider.add(thumbGraphics);
+    this.strikerSlider.setInteractive(
+      new Phaser.Geom.Circle(0, 0, 20),
+      Phaser.Geom.Circle.Contains
+    );
+
+    // Make slider draggable
+    this.input.setDraggable(this.strikerSlider);
+    
+    this.strikerSlider.on('drag', (_pointer: Phaser.Input.Pointer, dragX: number) => {
+      if (this.isStrikerMoving) return;
+      
+      const newX = Phaser.Math.Clamp(dragX, this.sliderMinX, this.sliderMaxX);
+      this.strikerSlider.x = newX;
+      this.strikerSliderX = newX;
+      
+      // Update striker position
+      this.matter.body.setPosition(this.striker, {
+        x: newX,
+        y: this.strikerBaseY,
+      });
+      this.strikerGraphics.setPosition(newX, this.strikerBaseY);
     });
   }
 
+  private drawStar(graphics: Phaser.GameObjects.Graphics, cx: number, cy: number, points: number, outer: number, inner: number): void {
+    const step = Math.PI / points;
+    graphics.beginPath();
+    for (let i = 0; i < 2 * points; i++) {
+      const r = i % 2 === 0 ? outer : inner;
+      const angle = i * step - Math.PI / 2;
+      const x = cx + r * Math.cos(angle);
+      const y = cy + r * Math.sin(angle);
+      if (i === 0) {
+        graphics.moveTo(x, y);
+      } else {
+        graphics.lineTo(x, y);
+      }
+    }
+    graphics.closePath();
+    graphics.fillPath();
+  }
+
   private createStriker(): void {
-    const x = this.boardCenterX;
+    const x = this.strikerSliderX;
     const y = this.strikerBaseY;
 
     this.striker = this.matter.add.circle(x, y, STRIKER_RADIUS, {
       friction: FRICTION,
-      frictionAir: FRICTION_AIR * 1.5,
+      frictionAir: FRICTION_AIR * 1.2,
       restitution: RESTITUTION,
       label: 'striker',
     }) as Piece;
 
     this.striker.gameData = { type: 'striker', pocketed: false };
 
-    // Draw striker
+    // Create striker graphics
+    this.strikerGraphics = this.add.container(x, y);
+
     const graphics = this.add.graphics();
+    
+    // Shadow
+    graphics.fillStyle(0x000000, 0.3);
+    graphics.fillCircle(2, 2, STRIKER_RADIUS);
+    
+    // Main body (white)
     graphics.fillStyle(COLORS.striker);
     graphics.fillCircle(0, 0, STRIKER_RADIUS);
-    graphics.lineStyle(3, 0xcc9900);
-    graphics.strokeCircle(0, 0, STRIKER_RADIUS);
-    graphics.lineStyle(2, 0xffee88);
-    graphics.strokeCircle(0, 0, STRIKER_RADIUS * 0.5);
-
-    const strikerContainer = this.add.container(x, y, [graphics]);
     
-    this.events.on('update', () => {
-      strikerContainer.setPosition(this.striker.position.x, this.striker.position.y);
-    });
+    // Red outer ring
+    graphics.lineStyle(3, COLORS.strikerRing);
+    graphics.strokeCircle(0, 0, STRIKER_RADIUS - 2);
+    
+    // Red star in center
+    graphics.fillStyle(COLORS.strikerStar);
+    this.drawStar(graphics, 0, 0, 5, 8, 4);
+    
+    // Highlight
+    graphics.fillStyle(0xffffff, 0.4);
+    graphics.fillCircle(-STRIKER_RADIUS * 0.3, -STRIKER_RADIUS * 0.3, STRIKER_RADIUS * 0.25);
 
-    // Create aim line (invisible initially)
-    this.aimLine = this.add.graphics();
-    this.powerMeter = this.add.graphics();
+    this.strikerGraphics.add(graphics);
   }
 
   private createUI(): void {
-    // Score display
-    this.scoreText = this.add.text(GAME_WIDTH / 2, 25, '', {
-      font: 'bold 20px Arial',
-      color: '#ffffff',
+    // Player info - top area
+    const panelY = 50;
+    
+    // Left player (You)
+    this.createPlayerPanel(60, panelY, 'You', this.whiteScore, true);
+    
+    // Right player (Opponent)
+    this.createPlayerPanel(GAME_WIDTH - 60, panelY, 'CPU', this.blackScore, false);
+    
+    // Coins display (center top)
+    const coinsContainer = this.add.container(GAME_WIDTH / 2, panelY);
+    
+    const coinBg = this.add.graphics();
+    coinBg.fillStyle(0x000000, 0.3);
+    coinBg.fillRoundedRect(-40, -20, 80, 40, 10);
+    
+    const coinIcon = this.add.text(-25, 0, '🪙', { font: '20px Arial' });
+    coinIcon.setOrigin(0.5);
+    
+    const coinText = this.add.text(10, 0, '1000', {
+      font: 'bold 16px Arial',
+      color: '#ffd700',
     });
-    this.scoreText.setOrigin(0.5);
-    this.updateScoreDisplay();
-
-    // Turn indicator
-    this.turnText = this.add.text(GAME_WIDTH / 2, 55, '', {
-      font: '16px Arial',
-      color: '#888888',
-    });
-    this.turnText.setOrigin(0.5);
-    this.updateTurnDisplay();
+    coinText.setOrigin(0.5);
+    
+    coinsContainer.add([coinBg, coinIcon, coinText]);
 
     // Back button
-    const backButton = this.add.text(20, 20, '← Menu', {
-      font: '16px Arial',
-      color: '#888888',
+    const backButton = this.add.text(20, 20, '✕', {
+      font: 'bold 24px Arial',
+      color: '#ffffff',
     });
     backButton.setInteractive({ useHandCursor: true });
-    backButton.on('pointerover', () => backButton.setColor('#ffffff'));
-    backButton.on('pointerout', () => backButton.setColor('#888888'));
     backButton.on('pointerdown', () => this.scene.start('Menu'));
   }
 
-  private updateScoreDisplay(): void {
-    this.scoreText.setText(`White: ${this.whiteScore}  |  Black: ${this.blackScore}`);
-  }
-
-  private updateTurnDisplay(): void {
-    const color = this.currentPlayer === 'white' ? '#ffffff' : '#888888';
-    this.turnText.setText(`${this.currentPlayer.toUpperCase()}'s Turn`);
-    this.turnText.setColor(color);
+  private createPlayerPanel(x: number, y: number, name: string, score: number, isLeft: boolean): void {
+    const container = this.add.container(x, y);
+    
+    // Avatar background
+    const avatarBg = this.add.graphics();
+    avatarBg.fillStyle(COLORS.boardBorder);
+    avatarBg.fillRoundedRect(-25, -25, 50, 50, 8);
+    
+    // Avatar placeholder
+    const avatar = this.add.graphics();
+    avatar.fillStyle(isLeft ? 0x4a90d9 : 0xd94a4a);
+    avatar.fillRoundedRect(-22, -22, 44, 44, 6);
+    
+    // Avatar emoji
+    const emoji = this.add.text(0, -5, isLeft ? '😊' : '🤖', { font: '24px Arial' });
+    emoji.setOrigin(0.5);
+    
+    // Name
+    const nameText = this.add.text(0, 40, name, {
+      font: '14px Arial',
+      color: '#ffffff',
+    });
+    nameText.setOrigin(0.5);
+    
+    // Score with piece icon
+    const scoreContainer = this.add.container(0, 60);
+    
+    const pieceIcon = this.add.graphics();
+    pieceIcon.fillStyle(isLeft ? COLORS.whitePiece : COLORS.blackPiece);
+    pieceIcon.fillCircle(-15, 0, 8);
+    pieceIcon.lineStyle(1, isLeft ? COLORS.whitePieceRing : COLORS.blackPieceRing);
+    pieceIcon.strokeCircle(-15, 0, 8);
+    
+    const scoreText = this.add.text(5, 0, score.toString(), {
+      font: 'bold 18px Arial',
+      color: '#ffffff',
+    });
+    scoreText.setOrigin(0.5);
+    
+    scoreContainer.add([pieceIcon, scoreText]);
+    container.add([avatarBg, avatar, emoji, nameText, scoreContainer]);
   }
 
   private setupInput(): void {
+    // Aiming from striker
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
       if (this.isStrikerMoving) return;
       
@@ -393,25 +603,25 @@ export class GameScene extends Phaser.Scene {
         this.striker.position.x, this.striker.position.y
       );
 
-      if (distance < STRIKER_RADIUS * 2) {
-        this.isDragging = true;
+      if (distance < STRIKER_RADIUS * 3) {
+        this.isAiming = true;
         this.dragStart = { x: pointer.x, y: pointer.y };
       }
     });
 
     this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
-      if (!this.isDragging || !this.dragStart) return;
+      if (!this.isAiming || !this.dragStart || this.isStrikerMoving) return;
       this.drawAimLine(pointer);
     });
 
     this.input.on('pointerup', (pointer: Phaser.Input.Pointer) => {
-      if (!this.isDragging || !this.dragStart) return;
+      if (!this.isAiming || !this.dragStart) return;
       
       this.shoot(pointer);
-      this.isDragging = false;
+      this.isAiming = false;
       this.dragStart = null;
       this.aimLine.clear();
-      this.powerMeter.clear();
+      this.powerIndicator.clear();
     });
   }
 
@@ -420,35 +630,37 @@ export class GameScene extends Phaser.Scene {
 
     const dx = this.dragStart.x - pointer.x;
     const dy = this.dragStart.y - pointer.y;
-    const distance = Math.min(Math.sqrt(dx * dx + dy * dy), 150);
+    const distance = Math.min(Math.sqrt(dx * dx + dy * dy), 100);
     const angle = Math.atan2(dy, dx);
-    const power = distance / 150;
+    const power = distance / 100;
 
     this.aimLine.clear();
+    
+    // Dotted aim line
     this.aimLine.lineStyle(2, COLORS.aimLine, 0.8);
-    this.aimLine.beginPath();
-    this.aimLine.moveTo(this.striker.position.x, this.striker.position.y);
-    this.aimLine.lineTo(
-      this.striker.position.x + Math.cos(angle) * distance * 2,
-      this.striker.position.y + Math.sin(angle) * distance * 2
-    );
-    this.aimLine.strokePath();
+    const lineLength = distance * 1.5;
+    const dotSpacing = 8;
+    
+    for (let i = 0; i < lineLength; i += dotSpacing) {
+      const startX = this.striker.position.x + Math.cos(angle) * i;
+      const startY = this.striker.position.y + Math.sin(angle) * i;
+      const endX = this.striker.position.x + Math.cos(angle) * (i + dotSpacing / 2);
+      const endY = this.striker.position.y + Math.sin(angle) * (i + dotSpacing / 2);
+      
+      this.aimLine.beginPath();
+      this.aimLine.moveTo(startX, startY);
+      this.aimLine.lineTo(endX, endY);
+      this.aimLine.strokePath();
+    }
 
-    // Draw power meter
-    this.powerMeter.clear();
-    this.powerMeter.fillStyle(power > 0.7 ? 0xff4444 : (power > 0.4 ? 0xffaa00 : 0x44ff44));
-    this.powerMeter.fillRect(
-      this.striker.position.x - 25,
-      this.striker.position.y + STRIKER_RADIUS + 10,
-      50 * power,
-      8
-    );
-    this.powerMeter.lineStyle(1, 0xffffff);
-    this.powerMeter.strokeRect(
-      this.striker.position.x - 25,
-      this.striker.position.y + STRIKER_RADIUS + 10,
-      50,
-      8
+    // Power indicator circle around striker
+    this.powerIndicator.clear();
+    const indicatorColor = power > 0.7 ? 0xff4444 : (power > 0.4 ? 0xffaa00 : 0x44ff44);
+    this.powerIndicator.lineStyle(3, indicatorColor, 0.6);
+    this.powerIndicator.strokeCircle(
+      this.striker.position.x,
+      this.striker.position.y,
+      STRIKER_RADIUS + 5 + power * 15
     );
   }
 
@@ -457,8 +669,11 @@ export class GameScene extends Phaser.Scene {
 
     const dx = this.dragStart.x - pointer.x;
     const dy = this.dragStart.y - pointer.y;
-    const distance = Math.min(Math.sqrt(dx * dx + dy * dy), 150);
-    const power = (distance / 150) * STRIKER_MAX_POWER;
+    const distance = Math.min(Math.sqrt(dx * dx + dy * dy), 100);
+    
+    if (distance < 10) return; // Minimum drag distance
+    
+    const power = (distance / 100) * STRIKER_MAX_POWER;
     const angle = Math.atan2(dy, dx);
 
     const velocityX = Math.cos(angle) * power;
@@ -469,41 +684,48 @@ export class GameScene extends Phaser.Scene {
   }
 
   private setupCollisions(): void {
-    this.matter.world.on('collisionstart', (event: Phaser.Physics.Matter.Events.CollisionStartEvent) => {
-      event.pairs.forEach(pair => {
-        // Play collision sound here in the future
-      });
+    this.matter.world.on('collisionstart', () => {
+      // Play collision sound here
     });
   }
 
   update(): void {
-    // Check if all pieces have stopped moving
+    // Update piece graphics positions
+    this.pieces.forEach(piece => {
+      if (piece.gameData?.graphics && !piece.gameData.pocketed) {
+        piece.gameData.graphics.setPosition(piece.position.x, piece.position.y);
+      }
+    });
+
+    // Update striker graphics
+    if (this.strikerGraphics) {
+      this.strikerGraphics.setPosition(this.striker.position.x, this.striker.position.y);
+    }
+
+    // Check if all pieces stopped
     if (this.isStrikerMoving) {
-      const allStopped = this.checkAllStopped();
-      if (allStopped) {
+      if (this.checkAllStopped()) {
         this.isStrikerMoving = false;
         this.handleTurnEnd();
       }
     }
 
-    // Check for pocketed pieces
+    // Check pockets
     this.checkPockets();
   }
 
   private checkAllStopped(): boolean {
-    const velocityThreshold = 0.1;
+    const threshold = 0.1;
 
-    // Check striker
     const strikerVel = this.striker.velocity;
-    if (Math.abs(strikerVel.x) > velocityThreshold || Math.abs(strikerVel.y) > velocityThreshold) {
+    if (Math.abs(strikerVel.x) > threshold || Math.abs(strikerVel.y) > threshold) {
       return false;
     }
 
-    // Check all pieces
     for (const piece of this.pieces) {
       if (piece.gameData?.pocketed) continue;
       const vel = piece.velocity;
-      if (Math.abs(vel.x) > velocityThreshold || Math.abs(vel.y) > velocityThreshold) {
+      if (Math.abs(vel.x) > threshold || Math.abs(vel.y) > threshold) {
         return false;
       }
     }
@@ -513,43 +735,40 @@ export class GameScene extends Phaser.Scene {
 
   private checkPockets(): void {
     // Check striker
-    this.pockets.forEach(pocket => {
-      const strikerDist = Phaser.Math.Distance.Between(
+    for (const pocket of this.pockets) {
+      const dist = Phaser.Math.Distance.Between(
         this.striker.position.x, this.striker.position.y,
         pocket.x, pocket.y
       );
-
-      if (strikerDist < POCKET_RADIUS) {
+      if (dist < POCKET_RADIUS - 5) {
         this.pocketStriker();
+        break;
       }
-    });
+    }
 
     // Check pieces
     this.pieces.forEach(piece => {
       if (piece.gameData?.pocketed) return;
 
-      this.pockets.forEach(pocket => {
+      for (const pocket of this.pockets) {
         const dist = Phaser.Math.Distance.Between(
           piece.position.x, piece.position.y,
           pocket.x, pocket.y
         );
-
-        if (dist < POCKET_RADIUS) {
+        if (dist < POCKET_RADIUS - 3) {
           this.pocketPiece(piece);
+          break;
         }
-      });
+      }
     });
   }
 
   private pocketStriker(): void {
-    // Reset striker to baseline
     this.matter.body.setPosition(this.striker, {
-      x: this.boardCenterX,
+      x: this.strikerSliderX,
       y: this.strikerBaseY,
     });
     this.matter.body.setVelocity(this.striker, { x: 0, y: 0 });
-
-    // Foul - could add penalty here
   }
 
   private pocketPiece(piece: Piece): void {
@@ -557,12 +776,15 @@ export class GameScene extends Phaser.Scene {
 
     piece.gameData.pocketed = true;
     
-    // Move piece off screen
+    // Hide graphics
+    if (piece.gameData.graphics) {
+      piece.gameData.graphics.setVisible(false);
+    }
+    
     this.matter.body.setPosition(piece, { x: -100, y: -100 });
     this.matter.body.setVelocity(piece, { x: 0, y: 0 });
     this.matter.body.setStatic(piece, true);
 
-    // Update score
     if (piece.gameData.type === 'white') {
       if (this.currentPlayer === 'white') this.whiteScore++;
     } else if (piece.gameData.type === 'black') {
@@ -571,21 +793,17 @@ export class GameScene extends Phaser.Scene {
       this.queenPocketed = true;
     }
 
-    this.updateScoreDisplay();
     this.checkWinCondition();
   }
 
   private handleTurnEnd(): void {
-    // Reset striker position
     this.matter.body.setPosition(this.striker, {
-      x: this.boardCenterX,
-      y: this.currentPlayer === 'white' ? this.strikerBaseY : this.boardCenterY - BOARD_SIZE / 2 + 60,
+      x: this.strikerSliderX,
+      y: this.strikerBaseY,
     });
     this.matter.body.setVelocity(this.striker, { x: 0, y: 0 });
 
-    // Switch turns
     this.currentPlayer = this.currentPlayer === 'white' ? 'black' : 'white';
-    this.updateTurnDisplay();
   }
 
   private checkWinCondition(): void {
@@ -600,10 +818,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   private endGame(winner: 'white' | 'black'): void {
-    this.scene.start('GameOver', { 
-      winner, 
-      whiteScore: this.whiteScore, 
-      blackScore: this.blackScore 
+    this.scene.start('GameOver', {
+      winner,
+      whiteScore: this.whiteScore,
+      blackScore: this.blackScore,
     });
   }
 }
