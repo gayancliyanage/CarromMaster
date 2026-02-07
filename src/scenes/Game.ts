@@ -204,21 +204,25 @@ export class GameScene extends Phaser.Scene {
     const halfBoard = BOARD_SIZE / 2 - 12; // Must match wall position in createWalls
     const wallThickness = 20; // Must match wall thickness
     const bounceEdge = halfBoard - wallThickness / 2; // Inner edge where balls bounce
-    const frameThickness = 25;
+    const blackFrameWidth = 18;
     const graphics = this.add.graphics();
 
-    // Outer black frame (thick) - extends beyond bounce line
-    graphics.fillStyle(COLORS.boardFrame);
-    graphics.fillRoundedRect(
-      x - bounceEdge - frameThickness, 
-      y - bounceEdge - frameThickness, 
-      (bounceEdge + frameThickness) * 2, 
-      (bounceEdge + frameThickness) * 2, 
-      6
-    );
+    // Main board surface first (playing area)
+    graphics.fillStyle(COLORS.board);
+    graphics.fillRect(x - bounceEdge, y - bounceEdge, bounceEdge * 2, bounceEdge * 2);
+
+    // Wood grain effect (subtle lines)
+    graphics.lineStyle(1, COLORS.boardDark, 0.1);
+    for (let i = 0; i < 20; i++) {
+      const lineY = y - bounceEdge + (bounceEdge * 2 / 20) * i;
+      graphics.beginPath();
+      graphics.moveTo(x - bounceEdge, lineY);
+      graphics.lineTo(x + bounceEdge, lineY);
+      graphics.strokePath();
+    }
 
     // Gold border at the bounce line (where balls actually hit)
-    graphics.lineStyle(4, COLORS.boardBorder);
+    graphics.lineStyle(5, COLORS.boardBorder);
     graphics.strokeRect(
       x - bounceEdge, 
       y - bounceEdge, 
@@ -226,19 +230,14 @@ export class GameScene extends Phaser.Scene {
       bounceEdge * 2
     );
 
-    // Main board surface (playing area inside bounce line)
-    graphics.fillStyle(COLORS.board);
-    graphics.fillRect(x - bounceEdge + 2, y - bounceEdge + 2, (bounceEdge - 2) * 2, (bounceEdge - 2) * 2);
-
-    // Wood grain effect (subtle lines)
-    graphics.lineStyle(1, COLORS.boardDark, 0.1);
-    for (let i = 0; i < 20; i++) {
-      const lineY = y - bounceEdge + 2 + ((bounceEdge - 2) * 2 / 20) * i;
-      graphics.beginPath();
-      graphics.moveTo(x - bounceEdge + 2, lineY);
-      graphics.lineTo(x + bounceEdge - 2, lineY);
-      graphics.strokePath();
-    }
+    // Thick black frame OUTSIDE the gold border
+    graphics.lineStyle(blackFrameWidth, COLORS.boardFrame);
+    graphics.strokeRect(
+      x - bounceEdge - blackFrameWidth / 2 - 2, 
+      y - bounceEdge - blackFrameWidth / 2 - 2, 
+      bounceEdge * 2 + blackFrameWidth + 4, 
+      bounceEdge * 2 + blackFrameWidth + 4
+    );
 
     // Inner playing area decorative border
     const innerMargin = 30;
