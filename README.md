@@ -10,11 +10,30 @@ Carrom is a popular tabletop game originating from South Asia. Players flick a s
 
 ## 🚀 Tech Stack
 
-- **[Phaser 3](https://phaser.io/)** — 2D game framework
+- **[Phaser 3](https://phaser.io/)** — 2D game framework (main version)
+- **[PixiJS 8](https://pixijs.com/)** — Premium edition renderer
 - **[Matter.js](https://brm.io/matter-js/)** — Physics engine (built into Phaser)
 - **[Vite](https://vitejs.dev/)** — Build tool
 - **[Capacitor](https://capacitorjs.com/)** — Native mobile packaging
 - **TypeScript** — Type safety
+
+## ✨ Premium Edition (PixiJS)
+
+A casino-quality visual experience with:
+
+- 🎨 **Ornate Victorian scrollwork** corner flourishes
+- 🪵 **Rich mahogany/rosewood** wood grain texture
+- 🌸 **Intricate golden mandala** center design with lotus petals
+- ✨ **Curved arrow baselines** with golden circles
+- ⚡ **Glowing striker** with lightning bolt icon
+- 🎯 **Deep shadowed pockets** with decorative rings
+- 🏆 **Premium lighting** and 3D shadow effects
+
+To try the PixiJS premium edition:
+```bash
+npm run dev
+# Then open http://localhost:5173/pixi.html
+```
 
 ## 📱 Platforms
 
@@ -81,27 +100,25 @@ npm run android
 ```
 CarromMaster/
 ├── src/
-│   ├── main.ts           # Entry point
-│   ├── config.ts         # Game configuration
+│   ├── main.ts                    # Entry point (Phaser)
+│   ├── config.ts                  # Game configuration
 │   ├── scenes/
-│   │   ├── Boot.ts       # Asset loading
-│   │   ├── Menu.ts       # Main menu
-│   │   ├── Game.ts       # Main gameplay
-│   │   └── GameOver.ts   # End screen
-│   ├── objects/
-│   │   ├── Board.ts      # Carrom board
-│   │   ├── Piece.ts      # Carrom men & queen
-│   │   ├── Striker.ts    # Player striker
-│   │   └── Pocket.ts     # Corner pockets
-│   ├── physics/
-│   │   └── CarromPhysics.ts
+│   │   ├── Boot.ts                # Asset loading
+│   │   ├── Menu.ts                # Main menu
+│   │   ├── Game.ts                # Main gameplay
+│   │   ├── BoardRenderer.ts       # Premium board visuals
+│   │   └── GameOver.ts            # End screen
+│   ├── pixi/                      # PixiJS Premium Edition
+│   │   ├── index.ts               # Module exports
+│   │   ├── PixiCarromGame.ts      # Complete PixiJS game
+│   │   ├── PremiumBoardRenderer.ts # Casino-quality board
+│   │   └── PremiumPieceRenderer.ts # Luxurious pieces
+│   ├── network/
+│   │   └── NetworkManager.ts      # Multiplayer support
 │   └── utils/
 │       └── helpers.ts
-├── public/
-│   └── assets/
-│       ├── images/
-│       └── audio/
-├── index.html
+├── index.html                     # Phaser version
+├── pixi.html                      # PixiJS Premium Edition
 └── package.json
 ```
 
