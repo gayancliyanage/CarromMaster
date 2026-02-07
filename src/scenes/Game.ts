@@ -60,11 +60,12 @@ export class GameScene extends Phaser.Scene {
     this.strikerBaseY = this.boardCenterY + BOARD_SIZE / 2 - 35;
 
     // Calculate board boundaries (must match wall positions)
-    const halfBoard = BOARD_SIZE / 2 - 12;
-    this.boardLeft = this.boardCenterX - halfBoard + 10;
-    this.boardRight = this.boardCenterX + halfBoard - 10;
-    this.boardTop = this.boardCenterY - halfBoard + 10;
-    this.boardBottom = this.boardCenterY + halfBoard - 10;
+    const playArea = BOARD_SIZE - 50;
+    const halfPlay = playArea / 2;
+    this.boardLeft = this.boardCenterX - halfPlay + 15;
+    this.boardRight = this.boardCenterX + halfPlay - 15;
+    this.boardTop = this.boardCenterY - halfPlay + 15;
+    this.boardBottom = this.boardCenterY + halfPlay - 15;
 
     // Reset game state
     this.pieces = [];
@@ -202,58 +203,58 @@ export class GameScene extends Phaser.Scene {
     const x = this.boardCenterX;
     const y = this.boardCenterY;
     const size = BOARD_SIZE;
-    const halfBoard = size / 2 - 12; // Must match wall position in createWalls
-    const wallThickness = 20; // Must match wall thickness
-    const bounceEdge = halfBoard - wallThickness / 2; // Inner edge where balls bounce
-    const blackFrameWidth = 35;
+    const playArea = size - 50; // Actual play area size
+    const frameWidth = 30;
     const graphics = this.add.graphics();
 
-    // 1. Thick black frame FIRST (background layer)
+    // 1. Thick black frame (outermost)
     graphics.fillStyle(COLORS.boardFrame);
-    graphics.fillRect(
-      x - bounceEdge - blackFrameWidth, 
-      y - bounceEdge - blackFrameWidth, 
-      (bounceEdge + blackFrameWidth) * 2, 
-      (bounceEdge + blackFrameWidth) * 2
+    graphics.fillRoundedRect(
+      x - playArea / 2 - frameWidth, 
+      y - playArea / 2 - frameWidth, 
+      playArea + frameWidth * 2, 
+      playArea + frameWidth * 2,
+      4
     );
 
-    // 2. Main board surface (playing area) on top
-    graphics.fillStyle(COLORS.board);
-    graphics.fillRect(x - bounceEdge, y - bounceEdge, bounceEdge * 2, bounceEdge * 2);
+    // 2. Gold border
+    graphics.fillStyle(COLORS.boardBorder);
+    graphics.fillRoundedRect(
+      x - playArea / 2 - 4, 
+      y - playArea / 2 - 4, 
+      playArea + 8, 
+      playArea + 8,
+      2
+    );
 
-    // 3. Wood grain effect (subtle lines)
+    // 3. Main board surface (playing area)
+    graphics.fillStyle(COLORS.board);
+    graphics.fillRect(x - playArea / 2, y - playArea / 2, playArea, playArea);
+
+    // 4. Wood grain effect
     graphics.lineStyle(1, COLORS.boardDark, 0.1);
     for (let i = 0; i < 20; i++) {
-      const lineY = y - bounceEdge + (bounceEdge * 2 / 20) * i;
+      const lineY = y - playArea / 2 + (playArea / 20) * i;
       graphics.beginPath();
-      graphics.moveTo(x - bounceEdge, lineY);
-      graphics.lineTo(x + bounceEdge, lineY);
+      graphics.moveTo(x - playArea / 2, lineY);
+      graphics.lineTo(x + playArea / 2, lineY);
       graphics.strokePath();
     }
 
-    // 4. Gold border at the bounce line (where balls actually hit)
-    graphics.lineStyle(5, COLORS.boardBorder);
-    graphics.strokeRect(
-      x - bounceEdge, 
-      y - bounceEdge, 
-      bounceEdge * 2, 
-      bounceEdge * 2
-    );
-
-    // 5. Inner playing area decorative border
-    const innerMargin = 30;
+    // 5. Inner decorative border
+    const innerMargin = 25;
     graphics.lineStyle(2, COLORS.boardDark, 0.5);
     graphics.strokeRect(
-      x - bounceEdge + innerMargin, 
-      y - bounceEdge + innerMargin, 
-      (bounceEdge - innerMargin) * 2, 
-      (bounceEdge - innerMargin) * 2
+      x - playArea / 2 + innerMargin, 
+      y - playArea / 2 + innerMargin, 
+      playArea - innerMargin * 2, 
+      playArea - innerMargin * 2
     );
 
-    // Center design - decorative circles
+    // Center design
     this.drawCenterDesign(graphics, x, y);
 
-    // Corner arrow lines pointing to pockets
+    // Corner lines
     this.drawCornerLines(graphics, x, y, size);
 
     // Baselines
@@ -351,9 +352,10 @@ export class GameScene extends Phaser.Scene {
   private createWalls(): void {
     const cx = this.boardCenterX;
     const cy = this.boardCenterY;
-    const halfBoard = BOARD_SIZE / 2 - 12; // Inner edge of board
+    const playArea = BOARD_SIZE - 50;
+    const halfBoard = playArea / 2; // Inner edge of board
     const wallThickness = 20;
-    const pocketGap = POCKET_RADIUS + 8; // Gap at corners for pockets
+    const pocketGap = POCKET_RADIUS + 10; // Gap at corners for pockets
 
     const wallOptions = {
       isStatic: true,
@@ -461,9 +463,8 @@ export class GameScene extends Phaser.Scene {
   private createPockets(): void {
     const x = this.boardCenterX;
     const y = this.boardCenterY;
-    const halfBoard = BOARD_SIZE / 2 - 12;
-    const wallThickness = 20;
-    const offset = halfBoard - wallThickness / 2; // Aligned with bounce edge
+    const playArea = BOARD_SIZE - 50;
+    const offset = playArea / 2 - 5; // Near corners of play area
 
     this.pockets = [
       { x: x - offset, y: y - offset },
