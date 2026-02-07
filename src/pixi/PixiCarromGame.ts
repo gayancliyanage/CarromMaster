@@ -1,7 +1,8 @@
 /**
- * PixiCarromGame - Complete PixiJS-based carrom game with premium visuals
+ * PixiCarromGame - Complete PixiJS-based carrom game with Matter.js physics
  * 
  * This is an alternative to the Phaser.js implementation with:
+ * - Matter.js physics for realistic piece movement
  * - Premium board rendering
  * - Luxurious piece designs
  * - Smooth animations
@@ -11,6 +12,7 @@
 import { Application, Container, Graphics, Text, TextStyle, FederatedPointerEvent } from 'pixi.js';
 import { PremiumBoardRenderer, BoardConfig } from './PremiumBoardRenderer';
 import { PremiumPieceRenderer, PieceType } from './PremiumPieceRenderer';
+import Matter from 'matter-js';
 
 // Game configuration
 const GAME_WIDTH = 450;
@@ -20,13 +22,16 @@ const PIECE_RADIUS = 12;
 const STRIKER_RADIUS = 16;
 const POCKET_RADIUS = 18;
 
+// Physics settings (matching Phaser version)
+const FRICTION = 0.03;
+const FRICTION_AIR = 0.015;
+const RESTITUTION = 0.85;
+const STRIKER_MAX_POWER = 22;
+
 interface PieceData {
   container: Container;
+  body: Matter.Body;
   type: PieceType;
-  vx: number;
-  vy: number;
-  x: number;
-  y: number;
   pocketed: boolean;
   index: number;
 }
@@ -43,6 +48,10 @@ export class PixiCarromGame {
   private pieceRenderer!: PremiumPieceRenderer;
   private pockets: { x: number; y: number }[] = [];
   
+  // Matter.js physics
+  private engine!: Matter.Engine;
+  private world!: Matter.World;
+  
   // Game state
   private pieces: PieceData[] = [];
   private striker!: PieceData;
@@ -50,19 +59,24 @@ export class PixiCarromGame {
   private boardCenterY!: number;
   private strikerBaseY!: number;
   
+  // Board boundaries
+  private boardLeft!: number;
+  private boardRight!: number;
+  private boardTop!: number;
+  private boardBottom!: number;
+  
   // Controls
   private isAiming = false;
   private dragStart: { x: number; y: number } | null = null;
   private aimLine!: Graphics;
   private powerIndicator!: Graphics;
   
-  // Physics
-  private readonly FRICTION = 0.985;
-  private readonly MAX_POWER = 25;
-  
   // UI
   private gameContainer!: Container;
   private uiContainer!: Container;
+  
+  // Audio
+  private audioContext: AudioContext | null = null;
 
   constructor() {
     // Initialize async
@@ -89,6 +103,17 @@ export class PixiCarromGame {
     this.boardCenterX = GAME_WIDTH / 2;
     this.boardCenterY = GAME_HEIGHT / 2 - 30;
     this.strikerBaseY = this.boardCenterY + BOARD_SIZE / 2 - 45;
+    
+    // Calculate board boundaries
+    const playArea = BOARD_SIZE - 50;
+    const halfPlay = playArea / 2;
+    this.boardLeft = this.boardCenterX - halfPlay + 15;
+    this.boardRight = this.boardCenterX + halfPlay - 15;
+    this.boardTop = this.boardCenterY - halfPlay + 15;
+    this.boardBottom = this.boardCenterY + halfPlay - 15;
+    
+    // Initialize Matter.js physics engine
+    this.initPhysics();
     
     // Create containers
     this.gameContainer = new Container();
@@ -122,6 +147,9 @@ export class PixiCarromGame {
     this.gameContainer.addChild(this.aimLine);
     this.gameContainer.addChild(this.powerIndicator);
     
+    // Create physics walls
+    this.createWalls();
+    
     // Create pieces and striker
     this.createPieces();
     this.createStriker();
@@ -132,8 +160,98 @@ export class PixiCarromGame {
     // Setup UI
     this.createUI();
     
+    // Initialize audio
+    this.initAudio();
+    
     // Start game loop
     this.app.ticker.add(this.update.bind(this));
+  }
+  
+  private initPhysics(): void {
+    // Create Matter.js engine with no gravity (top-down view)
+    this.engine = Matter.Engine.create({
+      gravity: { x: 0, y: 0 },
+    });
+    this.world = this.engine.world;
+    
+    // Setup collision events
+    Matter.Events.on(this.engine, 'collisionStart', (event) => {
+      event.pairs.forEach(pair => {
+        const labelA = pair.bodyA.label;
+        const labelB = pair.bodyB.label;
+        
+        if (labelA === 'wall' || labelB === 'wall') {
+          this.playSound('wall');
+        } else if ((labelA.startsWith('piece') || labelA === 'striker') && 
+                   (labelB.startsWith('piece') || labelB === 'striker')) {
+          this.playSound('hit');
+        }
+      });
+    });
+  }
+  
+  private createWalls(): void {
+    const cx = this.boardCenterX;
+    const cy = this.boardCenterY;
+    const playArea = BOARD_SIZE - 50;
+    const halfBoard = playArea / 2;
+    const wallThickness = 20;
+    const pocketGap = POCKET_RADIUS + 10;
+    
+    const wallOptions: Matter.IBodyDefinition = {
+      isStatic: true,
+      friction: 0.05,
+      restitution: RESTITUTION,
+      label: 'wall',
+    };
+    
+    const sideLength = halfBoard * 2;
+    const segmentLen = (sideLength - pocketGap * 2) / 2;
+    
+    // Top walls (left and right of center)
+    Matter.Composite.add(this.world, 
+      Matter.Bodies.rectangle(cx - segmentLen / 2 - pocketGap / 2, cy - halfBoard, segmentLen, wallThickness, wallOptions));
+    Matter.Composite.add(this.world, 
+      Matter.Bodies.rectangle(cx + segmentLen / 2 + pocketGap / 2, cy - halfBoard, segmentLen, wallThickness, wallOptions));
+    
+    // Bottom walls
+    Matter.Composite.add(this.world, 
+      Matter.Bodies.rectangle(cx - segmentLen / 2 - pocketGap / 2, cy + halfBoard, segmentLen, wallThickness, wallOptions));
+    Matter.Composite.add(this.world, 
+      Matter.Bodies.rectangle(cx + segmentLen / 2 + pocketGap / 2, cy + halfBoard, segmentLen, wallThickness, wallOptions));
+    
+    // Left walls
+    Matter.Composite.add(this.world, 
+      Matter.Bodies.rectangle(cx - halfBoard, cy - segmentLen / 2 - pocketGap / 2, wallThickness, segmentLen, wallOptions));
+    Matter.Composite.add(this.world, 
+      Matter.Bodies.rectangle(cx - halfBoard, cy + segmentLen / 2 + pocketGap / 2, wallThickness, segmentLen, wallOptions));
+    
+    // Right walls
+    Matter.Composite.add(this.world, 
+      Matter.Bodies.rectangle(cx + halfBoard, cy - segmentLen / 2 - pocketGap / 2, wallThickness, segmentLen, wallOptions));
+    Matter.Composite.add(this.world, 
+      Matter.Bodies.rectangle(cx + halfBoard, cy + segmentLen / 2 + pocketGap / 2, wallThickness, segmentLen, wallOptions));
+    
+    // Corner blockers to guide pieces into pockets
+    const cornerOffset = halfBoard - 5;
+    const blockerSize = 15;
+    const corners = [
+      { x: cx - cornerOffset, y: cy - cornerOffset, angle: Math.PI / 4 },
+      { x: cx + cornerOffset, y: cy - cornerOffset, angle: -Math.PI / 4 },
+      { x: cx - cornerOffset, y: cy + cornerOffset, angle: -Math.PI / 4 },
+      { x: cx + cornerOffset, y: cy + cornerOffset, angle: Math.PI / 4 },
+    ];
+    
+    corners.forEach(corner => {
+      Matter.Composite.add(this.world, 
+        Matter.Bodies.rectangle(
+          corner.x + Math.cos(corner.angle + Math.PI) * 12,
+          corner.y + Math.sin(corner.angle + Math.PI) * 12,
+          blockerSize, 
+          wallThickness / 2,
+          { ...wallOptions, angle: corner.angle }
+        ));
+    });
   }
 
   private resizeToFit(container: HTMLElement): void {
@@ -199,87 +317,81 @@ export class PixiCarromGame {
     // Create queen at center
     const queenX = this.boardCenterX;
     const queenY = this.boardCenterY;
-    const queenContainer = this.pieceRenderer.createPiece({
-      type: 'queen',
-      radius: PIECE_RADIUS,
-      x: queenX,
-      y: queenY,
-    });
-    this.gameContainer.addChild(queenContainer);
-    this.pieces.push({
-      container: queenContainer,
-      type: 'queen',
-      vx: 0,
-      vy: 0,
-      x: queenX,
-      y: queenY,
-      pocketed: false,
-      index: index++,
-    });
+    this.createPiece(queenX, queenY, 'queen', index++);
     
     // Create inner ring pieces
     innerRing.forEach(pos => {
       const px = this.boardCenterX + pos.x;
       const py = this.boardCenterY + pos.y;
-      const pieceContainer = this.pieceRenderer.createPiece({
-        type: pos.color,
-        radius: PIECE_RADIUS,
-        x: px,
-        y: py,
-      });
-      this.gameContainer.addChild(pieceContainer);
-      this.pieces.push({
-        container: pieceContainer,
-        type: pos.color,
-        vx: 0,
-        vy: 0,
-        x: px,
-        y: py,
-        pocketed: false,
-        index: index++,
-      });
+      this.createPiece(px, py, pos.color, index++);
     });
     
     // Create outer ring pieces
     outerRing.forEach(pos => {
       const px = this.boardCenterX + pos.x;
       const py = this.boardCenterY + pos.y;
-      const pieceContainer = this.pieceRenderer.createPiece({
-        type: pos.color,
-        radius: PIECE_RADIUS,
-        x: px,
-        y: py,
-      });
-      this.gameContainer.addChild(pieceContainer);
-      this.pieces.push({
-        container: pieceContainer,
-        type: pos.color,
-        vx: 0,
-        vy: 0,
-        x: px,
-        y: py,
-        pocketed: false,
-        index: index++,
-      });
+      this.createPiece(px, py, pos.color, index++);
+    });
+  }
+  
+  private createPiece(x: number, y: number, type: PieceType, index: number): void {
+    // Create visual container
+    const pieceContainer = this.pieceRenderer.createPiece({
+      type,
+      radius: PIECE_RADIUS,
+      x,
+      y,
+    });
+    this.gameContainer.addChild(pieceContainer);
+    
+    // Create Matter.js body
+    const body = Matter.Bodies.circle(x, y, PIECE_RADIUS, {
+      friction: FRICTION,
+      frictionAir: FRICTION_AIR,
+      restitution: RESTITUTION,
+      label: `piece_${type}_${index}`,
+      density: 0.001,
+    });
+    
+    Matter.Composite.add(this.world, body);
+    
+    this.pieces.push({
+      container: pieceContainer,
+      body,
+      type,
+      pocketed: false,
+      index,
     });
   }
 
   private createStriker(): void {
+    const x = this.boardCenterX;
+    const y = this.strikerBaseY;
+    
+    // Create visual container
     const strikerContainer = this.pieceRenderer.createPiece({
       type: 'striker',
       radius: STRIKER_RADIUS,
-      x: this.boardCenterX,
-      y: this.strikerBaseY,
+      x,
+      y,
     });
     this.gameContainer.addChild(strikerContainer);
     
+    // Create Matter.js body
+    const body = Matter.Bodies.circle(x, y, STRIKER_RADIUS, {
+      friction: FRICTION,
+      frictionAir: FRICTION_AIR * 1.2, // Striker has slightly more air friction
+      restitution: RESTITUTION,
+      label: 'striker',
+      density: 0.002, // Striker is heavier
+    });
+    
+    Matter.Composite.add(this.world, body);
+    
     this.striker = {
       container: strikerContainer,
+      body,
       type: 'striker',
-      vx: 0,
-      vy: 0,
-      x: this.boardCenterX,
-      y: this.strikerBaseY,
       pocketed: false,
       index: -1,
     };
@@ -300,8 +412,8 @@ export class PixiCarromGame {
     
     const pos = event.global;
     const dist = Math.sqrt(
-      Math.pow(pos.x - this.striker.x, 2) +
-      Math.pow(pos.y - this.striker.y, 2)
+      Math.pow(pos.x - this.striker.body.position.x, 2) +
+      Math.pow(pos.y - this.striker.body.position.y, 2)
     );
     
     if (dist < STRIKER_RADIUS * 3) {
@@ -342,15 +454,18 @@ export class PixiCarromGame {
     this.aimLine.clear();
     this.powerIndicator.clear();
     
+    const strikerX = this.striker.body.position.x;
+    const strikerY = this.striker.body.position.y;
+    
     // Draw dotted aim line
     const lineLength = distance * 1.5;
     const dotSpacing = 8;
     
     for (let i = 0; i < lineLength; i += dotSpacing) {
-      const startX = this.striker.x + Math.cos(angle) * i;
-      const startY = this.striker.y + Math.sin(angle) * i;
-      const endX = this.striker.x + Math.cos(angle) * (i + dotSpacing / 2);
-      const endY = this.striker.y + Math.sin(angle) * (i + dotSpacing / 2);
+      const startX = strikerX + Math.cos(angle) * i;
+      const startY = strikerY + Math.sin(angle) * i;
+      const endX = strikerX + Math.cos(angle) * (i + dotSpacing / 2);
+      const endY = strikerY + Math.sin(angle) * (i + dotSpacing / 2);
       
       this.aimLine.moveTo(startX, startY);
       this.aimLine.lineTo(endX, endY);
@@ -359,7 +474,7 @@ export class PixiCarromGame {
     
     // Draw power indicator ring
     const indicatorColor = power > 0.7 ? 0xFF4444 : (power > 0.4 ? 0xFFAA00 : 0x44FF44);
-    this.powerIndicator.circle(this.striker.x, this.striker.y, STRIKER_RADIUS + 5 + power * 15);
+    this.powerIndicator.circle(strikerX, strikerY, STRIKER_RADIUS + 5 + power * 15);
     this.powerIndicator.stroke({ color: indicatorColor, width: 3, alpha: 0.6 });
   }
 
@@ -372,16 +487,43 @@ export class PixiCarromGame {
     
     if (distance < 10) return;
     
-    const power = (distance / 100) * this.MAX_POWER;
+    const power = (distance / 100) * STRIKER_MAX_POWER;
     const angle = Math.atan2(dy, dx);
     
-    this.striker.vx = Math.cos(angle) * power;
-    this.striker.vy = Math.sin(angle) * power;
+    const velocityX = Math.cos(angle) * power;
+    const velocityY = Math.sin(angle) * power;
+    
+    // Apply velocity to striker body
+    Matter.Body.setVelocity(this.striker.body, { x: velocityX, y: velocityY });
+    
+    this.playSound('shoot');
   }
 
   private isStrikerMoving(): boolean {
     const threshold = 0.1;
-    return Math.abs(this.striker.vx) > threshold || Math.abs(this.striker.vy) > threshold;
+    const vel = this.striker.body.velocity;
+    return Math.abs(vel.x) > threshold || Math.abs(vel.y) > threshold;
+  }
+  
+  private checkAllStopped(): boolean {
+    const threshold = 0.1;
+    
+    // Check striker
+    const strikerVel = this.striker.body.velocity;
+    if (Math.abs(strikerVel.x) > threshold || Math.abs(strikerVel.y) > threshold) {
+      return false;
+    }
+    
+    // Check all pieces
+    for (const piece of this.pieces) {
+      if (piece.pocketed) continue;
+      const vel = piece.body.velocity;
+      if (Math.abs(vel.x) > threshold || Math.abs(vel.y) > threshold) {
+        return false;
+      }
+    }
+    
+    return true;
   }
 
   private createUI(): void {
@@ -413,144 +555,157 @@ export class PixiCarromGame {
     instructions.position.set(GAME_WIDTH / 2, GAME_HEIGHT - 35);
     this.uiContainer.addChild(instructions);
   }
+  
+  private initAudio(): void {
+    try {
+      this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    } catch (e) {
+      console.log('Audio not supported');
+    }
+  }
+  
+  private playSound(type: 'hit' | 'pocket' | 'wall' | 'shoot'): void {
+    if (!this.audioContext) return;
+
+    try {
+      const oscillator = this.audioContext.createOscillator();
+      const gainNode = this.audioContext.createGain();
+
+      oscillator.connect(gainNode);
+      gainNode.connect(this.audioContext.destination);
+
+      switch (type) {
+        case 'hit':
+          oscillator.frequency.setValueAtTime(800, this.audioContext.currentTime);
+          oscillator.frequency.exponentialRampToValueAtTime(200, this.audioContext.currentTime + 0.1);
+          gainNode.gain.setValueAtTime(0.3, this.audioContext.currentTime);
+          gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.1);
+          oscillator.start(this.audioContext.currentTime);
+          oscillator.stop(this.audioContext.currentTime + 0.1);
+          break;
+        case 'wall':
+          oscillator.frequency.setValueAtTime(150, this.audioContext.currentTime);
+          oscillator.frequency.exponentialRampToValueAtTime(50, this.audioContext.currentTime + 0.15);
+          gainNode.gain.setValueAtTime(0.4, this.audioContext.currentTime);
+          gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.15);
+          oscillator.type = 'sine';
+          oscillator.start(this.audioContext.currentTime);
+          oscillator.stop(this.audioContext.currentTime + 0.15);
+          break;
+        case 'pocket':
+          oscillator.frequency.setValueAtTime(600, this.audioContext.currentTime);
+          oscillator.frequency.exponentialRampToValueAtTime(100, this.audioContext.currentTime + 0.3);
+          gainNode.gain.setValueAtTime(0.5, this.audioContext.currentTime);
+          gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.3);
+          oscillator.type = 'sine';
+          oscillator.start(this.audioContext.currentTime);
+          oscillator.stop(this.audioContext.currentTime + 0.3);
+          break;
+        case 'shoot':
+          oscillator.frequency.setValueAtTime(200, this.audioContext.currentTime);
+          oscillator.frequency.exponentialRampToValueAtTime(400, this.audioContext.currentTime + 0.08);
+          gainNode.gain.setValueAtTime(0.2, this.audioContext.currentTime);
+          gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.08);
+          oscillator.type = 'triangle';
+          oscillator.start(this.audioContext.currentTime);
+          oscillator.stop(this.audioContext.currentTime + 0.08);
+          break;
+      }
+    } catch (e) {}
+  }
 
   private update(ticker: { deltaTime: number }): void {
-    const delta = ticker.deltaTime;
+    // Update Matter.js physics engine
+    // deltaTime is in frames (60fps), convert to ms
+    const delta = ticker.deltaTime * (1000 / 60);
+    Matter.Engine.update(this.engine, delta);
     
-    // Update striker
-    this.updatePiece(this.striker, delta);
+    // Sync visual positions with physics bodies
+    this.syncVisuals();
     
-    // Update all pieces
-    this.pieces.forEach(piece => {
-      if (!piece.pocketed) {
-        this.updatePiece(piece, delta);
-      }
-    });
-    
-    // Check collisions
-    this.checkCollisions();
+    // Constrain pieces to board boundaries
+    this.constrainPieces();
     
     // Check pockets
     this.checkPockets();
     
+    // Check if all pieces stopped and reset striker if needed
+    if (this.checkAllStopped() && this.striker.pocketed) {
+      this.resetStriker();
+    }
+    
     // Animate striker glow
-    this.pieceRenderer.animateStrikerGlow(this.striker.container, delta);
+    this.pieceRenderer.animateStrikerGlow(this.striker.container, ticker.deltaTime);
   }
-
-  private updatePiece(piece: PieceData, delta: number): void {
-    // Apply velocity
-    piece.x += piece.vx * delta * 0.1;
-    piece.y += piece.vy * delta * 0.1;
+  
+  private syncVisuals(): void {
+    // Sync striker
+    this.striker.container.position.set(
+      this.striker.body.position.x,
+      this.striker.body.position.y
+    );
     
-    // Apply friction
-    piece.vx *= this.FRICTION;
-    piece.vy *= this.FRICTION;
-    
-    // Stop if very slow
-    if (Math.abs(piece.vx) < 0.05 && Math.abs(piece.vy) < 0.05) {
-      piece.vx = 0;
-      piece.vy = 0;
-    }
-    
-    // Boundary collision
-    const playArea = BOARD_SIZE - 50;
-    const halfPlay = playArea / 2;
-    const minX = this.boardCenterX - halfPlay + 15;
-    const maxX = this.boardCenterX + halfPlay - 15;
-    const minY = this.boardCenterY - halfPlay + 15;
-    const maxY = this.boardCenterY + halfPlay - 15;
-    const radius = piece.type === 'striker' ? STRIKER_RADIUS : PIECE_RADIUS;
-    
-    if (piece.x - radius < minX) {
-      piece.x = minX + radius;
-      piece.vx *= -0.8;
-    }
-    if (piece.x + radius > maxX) {
-      piece.x = maxX - radius;
-      piece.vx *= -0.8;
-    }
-    if (piece.y - radius < minY) {
-      piece.y = minY + radius;
-      piece.vy *= -0.8;
-    }
-    if (piece.y + radius > maxY) {
-      piece.y = maxY - radius;
-      piece.vy *= -0.8;
-    }
-    
-    // Update visual position
-    piece.container.position.set(piece.x, piece.y);
+    // Sync all pieces
+    this.pieces.forEach(piece => {
+      if (!piece.pocketed) {
+        piece.container.position.set(
+          piece.body.position.x,
+          piece.body.position.y
+        );
+      }
+    });
   }
-
-  private checkCollisions(): void {
-    // Striker vs pieces
+  
+  private constrainPieces(): void {
+    const padding = 5;
+    const minX = this.boardLeft + padding;
+    const maxX = this.boardRight - padding;
+    const minY = this.boardTop + padding;
+    const maxY = this.boardBottom - padding;
+    
+    // Constrain striker
+    const sx = this.striker.body.position.x;
+    const sy = this.striker.body.position.y;
+    if (sx < minX || sx > maxX || sy < minY || sy > maxY) {
+      Matter.Body.setPosition(this.striker.body, {
+        x: Math.max(minX, Math.min(maxX, sx)),
+        y: Math.max(minY, Math.min(maxY, sy)),
+      });
+      const vel = this.striker.body.velocity;
+      Matter.Body.setVelocity(this.striker.body, {
+        x: sx < minX || sx > maxX ? -vel.x * 0.7 : vel.x,
+        y: sy < minY || sy > maxY ? -vel.y * 0.7 : vel.y,
+      });
+    }
+    
+    // Constrain pieces
     this.pieces.forEach(piece => {
       if (piece.pocketed) return;
-      this.resolveCollision(this.striker, STRIKER_RADIUS, piece, PIECE_RADIUS);
-    });
-    
-    // Piece vs piece
-    for (let i = 0; i < this.pieces.length; i++) {
-      if (this.pieces[i].pocketed) continue;
-      for (let j = i + 1; j < this.pieces.length; j++) {
-        if (this.pieces[j].pocketed) continue;
-        this.resolveCollision(this.pieces[i], PIECE_RADIUS, this.pieces[j], PIECE_RADIUS);
+      const px = piece.body.position.x;
+      const py = piece.body.position.y;
+      if (px < minX || px > maxX || py < minY || py > maxY) {
+        Matter.Body.setPosition(piece.body, {
+          x: Math.max(minX, Math.min(maxX, px)),
+          y: Math.max(minY, Math.min(maxY, py)),
+        });
+        const vel = piece.body.velocity;
+        Matter.Body.setVelocity(piece.body, {
+          x: px < minX || px > maxX ? -vel.x * 0.7 : vel.x,
+          y: py < minY || py > maxY ? -vel.y * 0.7 : vel.y,
+        });
       }
-    }
-  }
-
-  private resolveCollision(a: PieceData, radiusA: number, b: PieceData, radiusB: number): void {
-    const dx = b.x - a.x;
-    const dy = b.y - a.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    const minDist = radiusA + radiusB;
-    
-    if (dist < minDist && dist > 0) {
-      // Normalize
-      const nx = dx / dist;
-      const ny = dy / dist;
-      
-      // Separate
-      const overlap = minDist - dist;
-      a.x -= nx * overlap * 0.5;
-      a.y -= ny * overlap * 0.5;
-      b.x += nx * overlap * 0.5;
-      b.y += ny * overlap * 0.5;
-      
-      // Relative velocity
-      const dvx = a.vx - b.vx;
-      const dvy = a.vy - b.vy;
-      
-      // Relative velocity along collision normal
-      const dvn = dvx * nx + dvy * ny;
-      
-      // Don't resolve if velocities are separating
-      if (dvn > 0) return;
-      
-      // Collision response with restitution
-      const restitution = 0.85;
-      const massA = radiusA * radiusA;
-      const massB = radiusB * radiusB;
-      const totalMass = massA + massB;
-      
-      const impulse = -(1 + restitution) * dvn / totalMass;
-      
-      a.vx += impulse * massB * nx;
-      a.vy += impulse * massB * ny;
-      b.vx -= impulse * massA * nx;
-      b.vy -= impulse * massA * ny;
-    }
+    });
   }
 
   private checkPockets(): void {
     // Check striker
     for (const pocket of this.pockets) {
       const dist = Math.sqrt(
-        Math.pow(this.striker.x - pocket.x, 2) +
-        Math.pow(this.striker.y - pocket.y, 2)
+        Math.pow(this.striker.body.position.x - pocket.x, 2) +
+        Math.pow(this.striker.body.position.y - pocket.y, 2)
       );
       if (dist < POCKET_RADIUS + STRIKER_RADIUS * 0.5) {
-        this.resetStriker();
+        this.pocketStriker();
         break;
       }
     }
@@ -561,8 +716,8 @@ export class PixiCarromGame {
       
       for (const pocket of this.pockets) {
         const dist = Math.sqrt(
-          Math.pow(piece.x - pocket.x, 2) +
-          Math.pow(piece.y - pocket.y, 2)
+          Math.pow(piece.body.position.x - pocket.x, 2) +
+          Math.pow(piece.body.position.y - pocket.y, 2)
         );
         if (dist < POCKET_RADIUS + PIECE_RADIUS * 0.5) {
           this.pocketPiece(piece, pocket);
@@ -571,21 +726,41 @@ export class PixiCarromGame {
       }
     });
   }
+  
+  private pocketStriker(): void {
+    this.playSound('pocket');
+    this.striker.pocketed = true;
+    
+    // Stop striker and move it out of play temporarily
+    Matter.Body.setVelocity(this.striker.body, { x: 0, y: 0 });
+    Matter.Body.setPosition(this.striker.body, { x: -100, y: -100 });
+    this.striker.container.visible = false;
+  }
 
   private resetStriker(): void {
-    this.striker.x = this.boardCenterX;
-    this.striker.y = this.strikerBaseY;
-    this.striker.vx = 0;
-    this.striker.vy = 0;
-    this.striker.container.position.set(this.striker.x, this.striker.y);
+    this.striker.pocketed = false;
+    Matter.Body.setPosition(this.striker.body, {
+      x: this.boardCenterX,
+      y: this.strikerBaseY,
+    });
+    Matter.Body.setVelocity(this.striker.body, { x: 0, y: 0 });
+    this.striker.container.position.set(this.boardCenterX, this.strikerBaseY);
+    this.striker.container.visible = true;
   }
 
   private pocketPiece(piece: PieceData, pocket: { x: number; y: number }): void {
     piece.pocketed = true;
-    piece.vx = 0;
-    piece.vy = 0;
+    
+    // Stop the body and make it static
+    Matter.Body.setVelocity(piece.body, { x: 0, y: 0 });
+    Matter.Body.setPosition(piece.body, { x: -100, y: -100 });
+    Matter.Body.setStatic(piece.body, true);
+    
+    this.playSound('pocket');
     
     // Animate into pocket
+    const startX = piece.container.position.x;
+    const startY = piece.container.position.y;
     const startScale = piece.container.scale.x;
     const animDuration = 300;
     const startTime = Date.now();
@@ -596,8 +771,8 @@ export class PixiCarromGame {
       
       // Move toward pocket and shrink
       piece.container.position.set(
-        piece.x + (pocket.x - piece.x) * progress,
-        piece.y + (pocket.y - piece.y) * progress
+        startX + (pocket.x - startX) * progress,
+        startY + (pocket.y - startY) * progress
       );
       piece.container.scale.set(startScale * (1 - progress));
       
@@ -686,6 +861,11 @@ export class PixiCarromGame {
   }
 
   public destroy(): void {
+    // Clear Matter.js world
+    Matter.World.clear(this.world, false);
+    Matter.Engine.clear(this.engine);
+    
+    // Destroy PixiJS app
     this.app.destroy(true);
   }
 }
