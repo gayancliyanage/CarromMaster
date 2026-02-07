@@ -204,7 +204,7 @@ export class GameScene extends Phaser.Scene {
     const halfBoard = BOARD_SIZE / 2 - 12; // Must match wall position in createWalls
     const wallThickness = 20; // Must match wall thickness
     const bounceEdge = halfBoard - wallThickness / 2; // Inner edge where balls bounce
-    const blackFrameWidth = 18;
+    const blackFrameWidth = 35;
     const graphics = this.add.graphics();
 
     // Main board surface first (playing area)
