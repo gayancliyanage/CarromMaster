@@ -5,12 +5,12 @@ import { NetworkManager } from '../network/NetworkManager';
 export class MenuScene extends Phaser.Scene {
   private networkManager: NetworkManager;
   private statusText!: Phaser.GameObjects.Text;
-  private codeInput = '';
-  private inputText!: Phaser.GameObjects.Text;
   private inputContainer!: Phaser.GameObjects.Container;
   private showingJoinInput = false;
   private waitingContainer!: Phaser.GameObjects.Container;
   private isWaiting = false;
+  private htmlInput: HTMLInputElement | null = null;
+  private currentGameCode = '';
 
   constructor() {
     super({ key: 'Menu' });
@@ -33,6 +33,7 @@ export class MenuScene extends Phaser.Scene {
     this.networkManager.removeAllListeners();
     this.showingJoinInput = false;
     this.isWaiting = false;
+    this.removeHtmlInput();
 
     // Purple gradient background
     this.createBackground();
@@ -94,7 +95,7 @@ export class MenuScene extends Phaser.Scene {
     this.createWaitingOverlay(centerX, centerY);
 
     // Version
-    const version = this.add.text(GAME_WIDTH - 10, GAME_HEIGHT - 15, 'v0.3.0', {
+    const version = this.add.text(GAME_WIDTH - 10, GAME_HEIGHT - 15, 'v0.3.1', {
       font: '11px Arial',
       color: '#553377',
     });
@@ -102,6 +103,18 @@ export class MenuScene extends Phaser.Scene {
 
     // Fade in
     this.cameras.main.fadeIn(300);
+
+    // Clean up on scene shutdown
+    this.events.on('shutdown', () => {
+      this.removeHtmlInput();
+    });
+  }
+
+  private removeHtmlInput(): void {
+    if (this.htmlInput) {
+      this.htmlInput.remove();
+      this.htmlInput = null;
+    }
   }
 
   private createButton(
@@ -147,188 +160,292 @@ export class MenuScene extends Phaser.Scene {
   private createJoinInput(x: number, y: number): void {
     this.inputContainer = this.add.container(x, y);
     this.inputContainer.setVisible(false);
+    this.inputContainer.setDepth(100);
 
     // Background overlay
     const overlay = this.add.graphics();
-    overlay.fillStyle(0x000000, 0.8);
+    overlay.fillStyle(0x000000, 0.85);
     overlay.fillRect(-GAME_WIDTH / 2, -GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT);
+    overlay.setInteractive(new Phaser.Geom.Rectangle(-GAME_WIDTH / 2, -GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT), Phaser.Geom.Rectangle.Contains);
 
     // Panel
     const panel = this.add.graphics();
     panel.fillStyle(0x2a1a4a);
-    panel.fillRoundedRect(-140, -100, 280, 200, 15);
+    panel.fillRoundedRect(-140, -120, 280, 240, 15);
     panel.lineStyle(2, 0x6644aa);
-    panel.strokeRoundedRect(-140, -100, 280, 200, 15);
+    panel.strokeRoundedRect(-140, -120, 280, 240, 15);
 
     // Title
-    const title = this.add.text(0, -70, 'Enter Game Code', {
+    const title = this.add.text(0, -90, '🔗 Enter Game Code', {
       font: 'bold 18px Arial',
       color: '#ffffff',
     });
     title.setOrigin(0.5);
 
-    // Input box
+    // Instructions
+    const instructions = this.add.text(0, -55, 'Ask your friend for the 4-letter code', {
+      font: '12px Arial',
+      color: '#aaaaaa',
+    });
+    instructions.setOrigin(0.5);
+
+    // Input placeholder (visual only - real input is HTML)
     const inputBox = this.add.graphics();
     inputBox.fillStyle(0x1a0a2e);
-    inputBox.fillRoundedRect(-100, -30, 200, 50, 8);
-    inputBox.lineStyle(2, 0x4422aa);
-    inputBox.strokeRoundedRect(-100, -30, 200, 50, 8);
+    inputBox.fillRoundedRect(-100, -35, 200, 55, 8);
+    inputBox.lineStyle(2, 0x6644aa);
+    inputBox.strokeRoundedRect(-100, -35, 200, 55, 8);
 
-    // Input text
-    this.inputText = this.add.text(0, -5, '____', {
-      font: 'bold 28px Courier',
-      color: '#ffffff',
-      letterSpacing: 8,
+    // Tap to type hint
+    const tapHint = this.add.text(0, -7, 'Tap here to type', {
+      font: '16px Arial',
+      color: '#666666',
     });
-    this.inputText.setOrigin(0.5);
+    tapHint.setOrigin(0.5);
+    tapHint.setName('tapHint');
+
+    // Make input area tappable
+    const inputHitArea = this.add.zone(0, -7, 200, 55);
+    inputHitArea.setInteractive({ useHandCursor: true });
+    inputHitArea.on('pointerdown', () => this.focusHtmlInput());
 
     // Join button
     const joinBtn = this.add.graphics();
     joinBtn.fillStyle(0x44aa44);
-    joinBtn.fillRoundedRect(-60, 40, 120, 40, 8);
+    joinBtn.fillRoundedRect(-80, 40, 160, 45, 10);
+    joinBtn.fillStyle(0xffffff, 0.15);
+    joinBtn.fillRoundedRect(-75, 43, 150, 15, 6);
     
-    const joinText = this.add.text(0, 60, 'JOIN', {
+    const joinText = this.add.text(0, 62, '✓ JOIN GAME', {
       font: 'bold 16px Arial',
       color: '#ffffff',
     });
     joinText.setOrigin(0.5);
 
-    const joinHit = this.add.zone(0, 60, 120, 40);
+    const joinHit = this.add.zone(0, 62, 160, 45);
     joinHit.setInteractive({ useHandCursor: true });
     joinHit.on('pointerdown', () => this.joinGame());
 
     // Cancel button
-    const cancelText = this.add.text(0, 110, '✕ Cancel', {
+    const cancelBtn = this.add.graphics();
+    cancelBtn.fillStyle(0x664444);
+    cancelBtn.fillRoundedRect(-60, 100, 120, 35, 8);
+    
+    const cancelText = this.add.text(0, 117, '✕ Cancel', {
       font: '14px Arial',
-      color: '#aa6666',
+      color: '#ffffff',
     });
     cancelText.setOrigin(0.5);
-    cancelText.setInteractive({ useHandCursor: true });
-    cancelText.on('pointerdown', () => this.hideJoinInput());
+    
+    const cancelHit = this.add.zone(0, 117, 120, 35);
+    cancelHit.setInteractive({ useHandCursor: true });
+    cancelHit.on('pointerdown', () => this.hideJoinInput());
 
-    this.inputContainer.add([overlay, panel, title, inputBox, this.inputText, joinBtn, joinText, joinHit, cancelText]);
+    this.inputContainer.add([
+      overlay, panel, title, instructions, inputBox, tapHint, 
+      inputHitArea, joinBtn, joinText, joinHit, cancelBtn, cancelText, cancelHit
+    ]);
+  }
 
-    // Keyboard input
-    if (this.input && this.input.keyboard) {
-      this.input.keyboard.on('keydown', (event: KeyboardEvent) => {
-        if (!this.showingJoinInput) return;
-        
-        if (event.key === 'Backspace') {
-          this.codeInput = this.codeInput.slice(0, -1);
-        } else if (event.key === 'Enter' && this.codeInput.length === 4) {
-          this.joinGame();
-        } else if (/^[A-Za-z0-9]$/.test(event.key) && this.codeInput.length < 4) {
-          this.codeInput += event.key.toUpperCase();
+  private createHtmlInput(): void {
+    if (this.htmlInput) return;
+
+    const canvas = this.game.canvas;
+    const rect = canvas.getBoundingClientRect();
+    
+    // Calculate position based on game scaling
+    const scaleX = rect.width / GAME_WIDTH;
+    const scaleY = rect.height / GAME_HEIGHT;
+    const inputX = rect.left + (GAME_WIDTH / 2 - 90) * scaleX;
+    const inputY = rect.top + (GAME_HEIGHT / 2 - 30) * scaleY;
+    const inputWidth = 180 * scaleX;
+    const inputHeight = 45 * scaleY;
+
+    this.htmlInput = document.createElement('input');
+    this.htmlInput.type = 'text';
+    this.htmlInput.maxLength = 4;
+    this.htmlInput.placeholder = 'CODE';
+    this.htmlInput.autocomplete = 'off';
+    this.htmlInput.autocapitalize = 'characters';
+    this.htmlInput.style.cssText = `
+      position: fixed;
+      left: ${inputX}px;
+      top: ${inputY}px;
+      width: ${inputWidth}px;
+      height: ${inputHeight}px;
+      font-size: ${24 * scaleY}px;
+      font-family: monospace;
+      font-weight: bold;
+      text-align: center;
+      text-transform: uppercase;
+      letter-spacing: 8px;
+      background: #2a1a4a;
+      border: 2px solid #8866cc;
+      border-radius: 8px;
+      color: #ffffff;
+      outline: none;
+      z-index: 1000;
+    `;
+
+    this.htmlInput.addEventListener('input', () => {
+      if (this.htmlInput) {
+        this.htmlInput.value = this.htmlInput.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+        const tapHint = this.inputContainer.getByName('tapHint') as Phaser.GameObjects.Text;
+        if (tapHint) {
+          tapHint.setVisible(this.htmlInput.value.length === 0);
         }
-        
-        this.updateInputDisplay();
-      });
+      }
+    });
+
+    this.htmlInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter' && this.htmlInput && this.htmlInput.value.length === 4) {
+        this.joinGame();
+      }
+    });
+
+    document.body.appendChild(this.htmlInput);
+  }
+
+  private focusHtmlInput(): void {
+    if (!this.htmlInput) {
+      this.createHtmlInput();
+    }
+    if (this.htmlInput) {
+      this.htmlInput.focus();
+      const tapHint = this.inputContainer.getByName('tapHint') as Phaser.GameObjects.Text;
+      if (tapHint) {
+        tapHint.setVisible(false);
+      }
     }
   }
 
   private createWaitingOverlay(x: number, y: number): void {
     this.waitingContainer = this.add.container(x, y);
     this.waitingContainer.setVisible(false);
+    this.waitingContainer.setDepth(100);
 
     const overlay = this.add.graphics();
-    overlay.fillStyle(0x000000, 0.85);
+    overlay.fillStyle(0x000000, 0.9);
     overlay.fillRect(-GAME_WIDTH / 2, -GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT);
+    overlay.setInteractive(new Phaser.Geom.Rectangle(-GAME_WIDTH / 2, -GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT), Phaser.Geom.Rectangle.Contains);
 
     const panel = this.add.graphics();
-    panel.fillStyle(0x2a1a4a);
-    panel.fillRoundedRect(-150, -130, 300, 260, 15);
-    panel.lineStyle(2, 0x44aa44);
-    panel.strokeRoundedRect(-150, -130, 300, 260, 15);
+    panel.fillStyle(0x1a3d1a);
+    panel.fillRoundedRect(-150, -160, 300, 320, 15);
+    panel.lineStyle(3, 0x44aa44);
+    panel.strokeRoundedRect(-150, -160, 300, 320, 15);
 
-    const waitingTitle = this.add.text(0, -100, '🎮 Game Created!', {
-      font: 'bold 20px Arial',
+    const waitingTitle = this.add.text(0, -130, '🎮 Game Created!', {
+      font: 'bold 22px Arial',
       color: '#44ff44',
     });
     waitingTitle.setOrigin(0.5);
 
-    const waitingMsg = this.add.text(0, -60, 'Share this code:', {
+    const shareLabel = this.add.text(0, -90, 'Share this code with a friend:', {
       font: '14px Arial',
       color: '#cccccc',
     });
-    waitingMsg.setOrigin(0.5);
+    shareLabel.setOrigin(0.5);
 
+    // Code display box
     const codeBox = this.add.graphics();
-    codeBox.fillStyle(0x1a0a2e);
-    codeBox.fillRoundedRect(-80, -45, 160, 55, 8);
+    codeBox.fillStyle(0x0a1a0a);
+    codeBox.fillRoundedRect(-90, -70, 180, 60, 10);
+    codeBox.lineStyle(2, 0x44aa44);
+    codeBox.strokeRoundedRect(-90, -70, 180, 60, 10);
 
-    const codeText = this.add.text(0, -17, '', {
-      font: 'bold 32px Courier',
+    const codeText = this.add.text(0, -40, '----', {
+      font: 'bold 36px Courier',
       color: '#ffd700',
+      letterSpacing: 10,
     });
     codeText.setOrigin(0.5);
     codeText.setName('codeText');
 
-    const orText = this.add.text(0, 25, 'or share link:', {
+    // Copy Code button
+    const copyCodeBtn = this.add.graphics();
+    copyCodeBtn.fillStyle(0x4466aa);
+    copyCodeBtn.fillRoundedRect(-70, 5, 140, 38, 8);
+    
+    const copyCodeText = this.add.text(0, 24, '📋 Copy Code', {
+      font: 'bold 14px Arial',
+      color: '#ffffff',
+    });
+    copyCodeText.setOrigin(0.5);
+    copyCodeText.setName('copyCodeText');
+
+    const copyCodeHit = this.add.zone(0, 24, 140, 38);
+    copyCodeHit.setInteractive({ useHandCursor: true });
+    copyCodeHit.on('pointerdown', () => this.copyCode());
+
+    // Or divider
+    const orText = this.add.text(0, 55, '— or —', {
       font: '12px Arial',
-      color: '#888888',
+      color: '#666666',
     });
     orText.setOrigin(0.5);
 
-    const linkText = this.add.text(0, 50, '', {
-      font: '11px Arial',
-      color: '#6688ff',
-      wordWrap: { width: 280 },
-    });
-    linkText.setOrigin(0.5);
-    linkText.setName('linkText');
-
-    const copyBtn = this.add.graphics();
-    copyBtn.fillStyle(0x4466aa);
-    copyBtn.fillRoundedRect(-50, 70, 100, 30, 6);
-
-    const copyText = this.add.text(0, 85, '📋 Copy Link', {
-      font: '12px Arial',
+    // Copy Link button
+    const copyLinkBtn = this.add.graphics();
+    copyLinkBtn.fillStyle(0x6644aa);
+    copyLinkBtn.fillRoundedRect(-70, 75, 140, 38, 8);
+    
+    const copyLinkText = this.add.text(0, 94, '🔗 Copy Link', {
+      font: 'bold 14px Arial',
       color: '#ffffff',
     });
-    copyText.setOrigin(0.5);
-    copyText.setName('copyText');
+    copyLinkText.setOrigin(0.5);
+    copyLinkText.setName('copyLinkText');
 
-    const copyHit = this.add.zone(0, 85, 100, 30);
-    copyHit.setInteractive({ useHandCursor: true });
-    copyHit.on('pointerdown', () => this.copyLink());
+    const copyLinkHit = this.add.zone(0, 94, 140, 38);
+    copyLinkHit.setInteractive({ useHandCursor: true });
+    copyLinkHit.on('pointerdown', () => this.copyLink());
 
-    const waitStatus = this.add.text(0, 115, '⏳ Waiting for opponent...', {
+    // Status
+    const waitStatus = this.add.text(0, 135, '⏳ Waiting for opponent...', {
       font: '14px Arial',
       color: '#ffaa00',
     });
     waitStatus.setOrigin(0.5);
     waitStatus.setName('waitStatus');
 
-    const cancelWait = this.add.text(0, 145, '✕ Cancel', {
+    // Cancel button
+    const cancelBtn = this.add.graphics();
+    cancelBtn.fillStyle(0x664444);
+    cancelBtn.fillRoundedRect(-60, 160, 120, 35, 8);
+
+    const cancelWait = this.add.text(0, 177, '✕ Cancel', {
       font: '14px Arial',
-      color: '#aa6666',
+      color: '#ffffff',
     });
     cancelWait.setOrigin(0.5);
-    cancelWait.setInteractive({ useHandCursor: true });
-    cancelWait.on('pointerdown', () => this.cancelWaiting());
+    
+    const cancelHit = this.add.zone(0, 177, 120, 35);
+    cancelHit.setInteractive({ useHandCursor: true });
+    cancelHit.on('pointerdown', () => this.cancelWaiting());
 
     this.waitingContainer.add([
-      overlay, panel, waitingTitle, waitingMsg, codeBox, codeText,
-      orText, linkText, copyBtn, copyText, copyHit, waitStatus, cancelWait
+      overlay, panel, waitingTitle, shareLabel, codeBox, codeText,
+      copyCodeBtn, copyCodeText, copyCodeHit,
+      orText,
+      copyLinkBtn, copyLinkText, copyLinkHit,
+      waitStatus, cancelBtn, cancelWait, cancelHit
     ]);
-  }
-
-  private updateInputDisplay(): void {
-    const display = this.codeInput.padEnd(4, '_').split('').join(' ');
-    this.inputText.setText(display);
   }
 
   private showJoinInput(): void {
     this.showingJoinInput = true;
-    this.codeInput = '';
-    this.updateInputDisplay();
     this.inputContainer.setVisible(true);
+    // Create HTML input with slight delay for DOM to be ready
+    this.time.delayedCall(100, () => {
+      this.createHtmlInput();
+    });
   }
 
   private hideJoinInput(): void {
     this.showingJoinInput = false;
     this.inputContainer.setVisible(false);
-    this.codeInput = '';
+    this.removeHtmlInput();
   }
 
   private async createMultiplayerGame(): Promise<void> {
@@ -336,6 +453,7 @@ export class MenuScene extends Phaser.Scene {
     
     try {
       const gameId = await this.networkManager.createGame();
+      this.currentGameCode = gameId;
       this.showWaitingScreen(gameId);
       
       // Listen for opponent connection
@@ -360,12 +478,10 @@ export class MenuScene extends Phaser.Scene {
   private showWaitingScreen(gameId: string): void {
     this.isWaiting = true;
     this.waitingContainer.setVisible(true);
+    this.statusText.setText('');
     
     const codeText = this.waitingContainer.getByName('codeText') as Phaser.GameObjects.Text;
     if (codeText) codeText.setText(gameId);
-    
-    const linkText = this.waitingContainer.getByName('linkText') as Phaser.GameObjects.Text;
-    if (linkText) linkText.setText(this.networkManager.getShareableLink());
   }
 
   private cancelWaiting(): void {
@@ -373,23 +489,72 @@ export class MenuScene extends Phaser.Scene {
     this.waitingContainer.setVisible(false);
     this.networkManager.disconnect();
     this.statusText.setText('');
+    this.currentGameCode = '';
   }
 
-  private copyLink(): void {
-    const link = this.networkManager.getShareableLink();
-    navigator.clipboard.writeText(link).then(() => {
-      const copyText = this.waitingContainer.getByName('copyText') as Phaser.GameObjects.Text;
-      if (copyText) {
-        copyText.setText('✅ Copied!');
+  private copyCode(): void {
+    const code = this.currentGameCode;
+    if (!code) return;
+
+    this.copyToClipboard(code).then((success) => {
+      const copyCodeText = this.waitingContainer.getByName('copyCodeText') as Phaser.GameObjects.Text;
+      if (copyCodeText) {
+        copyCodeText.setText(success ? '✅ Copied!' : '❌ Failed');
         this.time.delayedCall(2000, () => {
-          copyText.setText('📋 Copy Link');
+          copyCodeText.setText('📋 Copy Code');
         });
       }
     });
   }
 
+  private copyLink(): void {
+    const link = this.networkManager.getShareableLink();
+    
+    this.copyToClipboard(link).then((success) => {
+      const copyLinkText = this.waitingContainer.getByName('copyLinkText') as Phaser.GameObjects.Text;
+      if (copyLinkText) {
+        copyLinkText.setText(success ? '✅ Copied!' : '❌ Failed');
+        this.time.delayedCall(2000, () => {
+          copyLinkText.setText('🔗 Copy Link');
+        });
+      }
+    });
+  }
+
+  private async copyToClipboard(text: string): Promise<boolean> {
+    try {
+      // Try modern clipboard API first
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+      
+      // Fallback for older browsers / iOS
+      const textArea = document.createElement('textarea');
+      textArea.value = text;
+      textArea.style.position = 'fixed';
+      textArea.style.left = '-9999px';
+      textArea.style.top = '-9999px';
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+      
+      try {
+        document.execCommand('copy');
+        return true;
+      } finally {
+        document.body.removeChild(textArea);
+      }
+    } catch (err) {
+      console.error('Copy failed:', err);
+      return false;
+    }
+  }
+
   private async joinGame(): Promise<void> {
-    if (this.codeInput.length !== 4) {
+    const code = this.htmlInput?.value?.toUpperCase() || '';
+    
+    if (code.length !== 4) {
       this.statusText.setText('Enter a 4-character code');
       return;
     }
@@ -398,7 +563,7 @@ export class MenuScene extends Phaser.Scene {
     this.statusText.setText('Connecting...');
 
     try {
-      await this.networkManager.joinGame(this.codeInput);
+      await this.networkManager.joinGame(code);
       this.statusText.setText('Connected! Starting game...');
       
       this.time.delayedCall(500, () => {
@@ -414,20 +579,25 @@ export class MenuScene extends Phaser.Scene {
     // Clear the URL parameter
     window.history.replaceState({}, '', window.location.pathname);
     
-    this.statusText?.setText('Connecting to game...');
-    
-    try {
-      await this.networkManager.joinGame(code);
-      this.time.delayedCall(500, () => {
-        this.startGame('multiplayer-guest');
-      });
-    } catch (error) {
-      this.statusText?.setText('Game not found. It may have expired.');
-      console.error(error);
-    }
+    // Wait for scene to be fully ready
+    this.time.delayedCall(500, async () => {
+      this.statusText?.setText('Connecting to game...');
+      
+      try {
+        await this.networkManager.joinGame(code);
+        this.statusText?.setText('Connected!');
+        this.time.delayedCall(500, () => {
+          this.startGame('multiplayer-guest');
+        });
+      } catch (error) {
+        this.statusText?.setText('Game not found. It may have expired.');
+        console.error(error);
+      }
+    });
   }
 
   private startGame(mode: 'cpu' | 'multiplayer-host' | 'multiplayer-guest'): void {
+    this.removeHtmlInput();
     this.cameras.main.fadeOut(300);
     this.time.delayedCall(300, () => {
       this.scene.start('Game', { mode });
