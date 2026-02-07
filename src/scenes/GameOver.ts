@@ -5,6 +5,7 @@ interface GameOverData {
   winner: 'white' | 'black';
   whiteScore: number;
   blackScore: number;
+  isHumanWinner: boolean;
 }
 
 export class GameOverScene extends Phaser.Scene {
@@ -16,53 +17,120 @@ export class GameOverScene extends Phaser.Scene {
     const centerX = GAME_WIDTH / 2;
     const centerY = GAME_HEIGHT / 2;
 
-    // Background
-    this.add.rectangle(centerX, centerY, GAME_WIDTH, GAME_HEIGHT, 0x1a1a2e, 0.95);
+    // Background gradient
+    const bg = this.add.graphics();
+    if (data.isHumanWinner) {
+      // Victory gradient (green tones)
+      bg.fillStyle(0x1a3d1a, 0.98);
+    } else {
+      // Defeat gradient (red tones)
+      bg.fillStyle(0x3d1a1a, 0.98);
+    }
+    bg.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+
+    // Emoji and message based on outcome
+    const emoji = data.isHumanWinner ? '🏆' : '😔';
+    const message = data.isHumanWinner ? 'YOU WIN!' : 'CPU WINS';
+    const messageColor = data.isHumanWinner ? '#ffd700' : '#ff6666';
+    
+    // Trophy/emoji
+    const emojiText = this.add.text(centerX, centerY - 180, emoji, {
+      font: '80px Arial',
+    });
+    emojiText.setOrigin(0.5);
+    
+    // Add subtle animation to emoji
+    this.tweens.add({
+      targets: emojiText,
+      y: centerY - 190,
+      duration: 1000,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut',
+    });
 
     // Winner text
-    const winnerColor = data.winner === 'white' ? '#ffffff' : '#888888';
-    const winnerText = this.add.text(centerX, centerY - 100, `${data.winner.toUpperCase()} WINS!`, {
-      font: 'bold 48px Arial',
-      color: winnerColor,
+    const winnerText = this.add.text(centerX, centerY - 80, message, {
+      font: 'bold 52px Arial',
+      color: messageColor,
+      stroke: '#000000',
+      strokeThickness: 4,
     });
     winnerText.setOrigin(0.5);
 
-    // Trophy emoji
-    const trophy = this.add.text(centerX, centerY - 180, '🏆', {
-      font: '72px Arial',
+    // Subtitle
+    const subtitle = data.isHumanWinner 
+      ? 'Congratulations! 🎉' 
+      : 'Better luck next time!';
+    const subtitleText = this.add.text(centerX, centerY - 30, subtitle, {
+      font: '20px Arial',
+      color: '#cccccc',
     });
-    trophy.setOrigin(0.5);
+    subtitleText.setOrigin(0.5);
 
-    // Final score
-    const scoreText = this.add.text(centerX, centerY, 
-      `Final Score\nWhite: ${data.whiteScore}  |  Black: ${data.blackScore}`, {
-      font: '24px Arial',
-      color: '#888888',
-      align: 'center',
+    // Score panel
+    const scorePanel = this.add.graphics();
+    scorePanel.fillStyle(0x000000, 0.4);
+    scorePanel.fillRoundedRect(centerX - 120, centerY + 10, 240, 80, 10);
+    
+    // Score display
+    const yourScore = this.add.text(centerX - 60, centerY + 35, `You`, {
+      font: '16px Arial',
+      color: '#ffffff',
     });
-    scoreText.setOrigin(0.5);
+    yourScore.setOrigin(0.5);
+    
+    const yourScoreNum = this.add.text(centerX - 60, centerY + 60, `${data.whiteScore}`, {
+      font: 'bold 28px Arial',
+      color: COLORS.whitePiece.toString(16).padStart(6, '0').replace(/^/, '#'),
+    });
+    yourScoreNum.setOrigin(0.5);
+    
+    const vsText = this.add.text(centerX, centerY + 50, 'vs', {
+      font: '16px Arial',
+      color: '#888888',
+    });
+    vsText.setOrigin(0.5);
+    
+    const cpuScore = this.add.text(centerX + 60, centerY + 35, `CPU`, {
+      font: '16px Arial',
+      color: '#ffffff',
+    });
+    cpuScore.setOrigin(0.5);
+    
+    const cpuScoreNum = this.add.text(centerX + 60, centerY + 60, `${data.blackScore}`, {
+      font: 'bold 28px Arial',
+      color: '#444444',
+    });
+    cpuScoreNum.setOrigin(0.5);
 
     // Play Again button
-    const playAgainButton = this.add.rectangle(centerX, centerY + 100, 200, 50, COLORS.striker);
-    playAgainButton.setInteractive({ useHandCursor: true });
+    const playAgainButton = this.add.graphics();
+    playAgainButton.fillStyle(data.isHumanWinner ? 0x44aa44 : 0xaa4444);
+    playAgainButton.fillRoundedRect(centerX - 100, centerY + 120, 200, 50, 10);
     
-    const playAgainText = this.add.text(centerX, centerY + 100, 'PLAY AGAIN', {
-      font: 'bold 20px Arial',
-      color: '#000000',
+    const playAgainHitArea = this.add.rectangle(centerX, centerY + 145, 200, 50);
+    playAgainHitArea.setInteractive({ useHandCursor: true });
+    
+    const playAgainText = this.add.text(centerX, centerY + 145, '🎮 PLAY AGAIN', {
+      font: 'bold 18px Arial',
+      color: '#ffffff',
     });
     playAgainText.setOrigin(0.5);
 
-    playAgainButton.on('pointerover', () => {
-      playAgainButton.setScale(1.05);
-      playAgainText.setScale(1.05);
+    playAgainHitArea.on('pointerover', () => {
+      playAgainButton.clear();
+      playAgainButton.fillStyle(data.isHumanWinner ? 0x55bb55 : 0xbb5555);
+      playAgainButton.fillRoundedRect(centerX - 105, centerY + 117, 210, 56, 10);
     });
 
-    playAgainButton.on('pointerout', () => {
-      playAgainButton.setScale(1);
-      playAgainText.setScale(1);
+    playAgainHitArea.on('pointerout', () => {
+      playAgainButton.clear();
+      playAgainButton.fillStyle(data.isHumanWinner ? 0x44aa44 : 0xaa4444);
+      playAgainButton.fillRoundedRect(centerX - 100, centerY + 120, 200, 50, 10);
     });
 
-    playAgainButton.on('pointerdown', () => {
+    playAgainHitArea.on('pointerdown', () => {
       this.cameras.main.fadeOut(300);
       this.time.delayedCall(300, () => {
         this.scene.start('Game');
@@ -70,33 +138,72 @@ export class GameOverScene extends Phaser.Scene {
     });
 
     // Menu button
-    const menuButton = this.add.rectangle(centerX, centerY + 170, 200, 50, 0x444444);
-    menuButton.setInteractive({ useHandCursor: true });
+    const menuButton = this.add.graphics();
+    menuButton.fillStyle(0x444444);
+    menuButton.fillRoundedRect(centerX - 100, centerY + 185, 200, 50, 10);
     
-    const menuText = this.add.text(centerX, centerY + 170, 'MAIN MENU', {
-      font: 'bold 20px Arial',
+    const menuHitArea = this.add.rectangle(centerX, centerY + 210, 200, 50);
+    menuHitArea.setInteractive({ useHandCursor: true });
+    
+    const menuText = this.add.text(centerX, centerY + 210, '🏠 MAIN MENU', {
+      font: 'bold 18px Arial',
       color: '#ffffff',
     });
     menuText.setOrigin(0.5);
 
-    menuButton.on('pointerover', () => {
-      menuButton.setScale(1.05);
-      menuText.setScale(1.05);
+    menuHitArea.on('pointerover', () => {
+      menuButton.clear();
+      menuButton.fillStyle(0x555555);
+      menuButton.fillRoundedRect(centerX - 105, centerY + 182, 210, 56, 10);
     });
 
-    menuButton.on('pointerout', () => {
-      menuButton.setScale(1);
-      menuText.setScale(1);
+    menuHitArea.on('pointerout', () => {
+      menuButton.clear();
+      menuButton.fillStyle(0x444444);
+      menuButton.fillRoundedRect(centerX - 100, centerY + 185, 200, 50, 10);
     });
 
-    menuButton.on('pointerdown', () => {
+    menuHitArea.on('pointerdown', () => {
       this.cameras.main.fadeOut(300);
       this.time.delayedCall(300, () => {
         this.scene.start('Menu');
       });
     });
 
+    // Add confetti effect for winner
+    if (data.isHumanWinner) {
+      this.createConfetti();
+    }
+
     // Fade in
     this.cameras.main.fadeIn(300);
+  }
+
+  private createConfetti(): void {
+    const colors = [0xff0000, 0x00ff00, 0x0000ff, 0xffff00, 0xff00ff, 0x00ffff, 0xffd700];
+    
+    for (let i = 0; i < 50; i++) {
+      const x = Phaser.Math.Between(0, GAME_WIDTH);
+      const delay = Phaser.Math.Between(0, 1000);
+      const color = Phaser.Utils.Array.GetRandom(colors);
+      
+      this.time.delayedCall(delay, () => {
+        const confetti = this.add.graphics();
+        confetti.fillStyle(color);
+        confetti.fillRect(-4, -8, 8, 16);
+        confetti.setPosition(x, -20);
+        confetti.setRotation(Phaser.Math.FloatBetween(0, Math.PI * 2));
+        
+        this.tweens.add({
+          targets: confetti,
+          y: GAME_HEIGHT + 50,
+          x: x + Phaser.Math.Between(-100, 100),
+          rotation: confetti.rotation + Phaser.Math.FloatBetween(-5, 5),
+          duration: Phaser.Math.Between(2000, 4000),
+          ease: 'Sine.easeIn',
+          onComplete: () => confetti.destroy(),
+        });
+      });
+    }
   }
 }

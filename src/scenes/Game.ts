@@ -22,6 +22,16 @@ interface Piece extends MatterJS.BodyType {
   };
 }
 
+type PlayerColor = 'white' | 'black';
+
+interface TurnResult {
+  pocketedOwn: boolean;
+  pocketedOpponent: boolean;
+  pocketedQueen: boolean;
+  pocketedStriker: boolean;
+  piecesThisTurn: ('white' | 'black' | 'queen')[];
+}
+
 export class GameScene extends Phaser.Scene {
   private striker!: Piece;
   private pieces: Piece[] = [];
@@ -31,10 +41,14 @@ export class GameScene extends Phaser.Scene {
   private dragStart: { x: number; y: number } | null = null;
   private aimLine!: Phaser.GameObjects.Graphics;
   private powerIndicator!: Phaser.GameObjects.Graphics;
-  private currentPlayer: 'white' | 'black' = 'white';
+  private currentPlayer: PlayerColor = 'white';
+  private humanPlayer: PlayerColor = 'white';
   private whiteScore = 0;
   private blackScore = 0;
   private queenPocketed = false;
+  private queenCovered = false;
+  private queenPocketedBy: PlayerColor | null = null;
+  private needsCover = false; // True when queen needs to be covered
   private strikerBaseY!: number;
   private boardCenterX!: number;
   private boardCenterY!: number;
@@ -49,6 +63,11 @@ export class GameScene extends Phaser.Scene {
   private boardRight!: number;
   private boardTop!: number;
   private boardBottom!: number;
+  private turnResult!: TurnResult;
+  private turnIndicator!: Phaser.GameObjects.Container;
+  private messageText!: Phaser.GameObjects.Text;
+  private isAITurn = false;
+  private aiThinkingDelay = 800;
 
   constructor() {
     super({ key: 'Game' });
@@ -72,8 +91,14 @@ export class GameScene extends Phaser.Scene {
     this.whiteScore = 0;
     this.blackScore = 0;
     this.queenPocketed = false;
-    this.currentPlayer = 'white';
+    this.queenCovered = false;
+    this.queenPocketedBy = null;
+    this.needsCover = false;
+    this.currentPlayer = 'white'; // White always starts
+    this.humanPlayer = 'white';
     this.isStrikerMoving = false;
+    this.isAITurn = false;
+    this.resetTurnResult();
 
     // Initialize audio
     this.initAudio();
@@ -111,6 +136,19 @@ export class GameScene extends Phaser.Scene {
 
     // Fade in
     this.cameras.main.fadeIn(300);
+
+    // Show starting message
+    this.showMessage('Your turn! (White)');
+  }
+
+  private resetTurnResult(): void {
+    this.turnResult = {
+      pocketedOwn: false,
+      pocketedOpponent: false,
+      pocketedQueen: false,
+      pocketedStriker: false,
+      piecesThisTurn: [],
+    };
   }
 
   private initAudio(): void {
@@ -133,7 +171,6 @@ export class GameScene extends Phaser.Scene {
 
       switch (type) {
         case 'hit':
-          // Short click sound for piece collision
           oscillator.frequency.setValueAtTime(800, this.audioContext.currentTime);
           oscillator.frequency.exponentialRampToValueAtTime(200, this.audioContext.currentTime + 0.1);
           gainNode.gain.setValueAtTime(0.3, this.audioContext.currentTime);
@@ -143,7 +180,6 @@ export class GameScene extends Phaser.Scene {
           break;
 
         case 'wall':
-          // Thud sound for wall bounce
           oscillator.frequency.setValueAtTime(150, this.audioContext.currentTime);
           oscillator.frequency.exponentialRampToValueAtTime(50, this.audioContext.currentTime + 0.15);
           gainNode.gain.setValueAtTime(0.4, this.audioContext.currentTime);
@@ -154,7 +190,6 @@ export class GameScene extends Phaser.Scene {
           break;
 
         case 'pocket':
-          // Satisfying drop sound
           oscillator.frequency.setValueAtTime(600, this.audioContext.currentTime);
           oscillator.frequency.exponentialRampToValueAtTime(100, this.audioContext.currentTime + 0.3);
           gainNode.gain.setValueAtTime(0.5, this.audioContext.currentTime);
@@ -165,7 +200,6 @@ export class GameScene extends Phaser.Scene {
           break;
 
         case 'shoot':
-          // Whoosh sound for shooting
           oscillator.frequency.setValueAtTime(200, this.audioContext.currentTime);
           oscillator.frequency.exponentialRampToValueAtTime(400, this.audioContext.currentTime + 0.08);
           gainNode.gain.setValueAtTime(0.2, this.audioContext.currentTime);
@@ -181,10 +215,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   private createBackground(): void {
-    // Purple gradient background
     const bg = this.add.graphics();
     
-    // Create gradient effect with rectangles
     const steps = 20;
     for (let i = 0; i < steps; i++) {
       const ratio = i / steps;
@@ -207,7 +239,7 @@ export class GameScene extends Phaser.Scene {
     const frameWidth = 28;
     const graphics = this.add.graphics();
 
-    // 1. Dark wood frame (outermost)
+    // Dark wood frame
     graphics.fillStyle(COLORS.boardFrame);
     graphics.fillRoundedRect(
       x - playArea / 2 - frameWidth, 
@@ -217,11 +249,11 @@ export class GameScene extends Phaser.Scene {
       4
     );
 
-    // 2. Main board surface (light cream wood)
+    // Main board surface
     graphics.fillStyle(COLORS.board);
     graphics.fillRect(x - playArea / 2, y - playArea / 2, playArea, playArea);
 
-    // 3. Subtle wood grain
+    // Wood grain
     graphics.lineStyle(1, 0xddd5c0, 0.5);
     for (let i = 0; i < 30; i++) {
       const lineY = y - playArea / 2 + (playArea / 30) * i;
@@ -231,7 +263,7 @@ export class GameScene extends Phaser.Scene {
       graphics.strokePath();
     }
 
-    // 4. Outer black border line
+    // Border lines
     const outerInset = 12;
     graphics.lineStyle(2.5, 0x000000, 1);
     graphics.strokeRect(
@@ -241,7 +273,6 @@ export class GameScene extends Phaser.Scene {
       playArea - outerInset * 2
     );
 
-    // 5. Inner black border line
     const innerInset = 32;
     graphics.lineStyle(2, 0x000000, 1);
     graphics.strokeRect(
@@ -251,56 +282,41 @@ export class GameScene extends Phaser.Scene {
       playArea - innerInset * 2
     );
 
-    // 6. Red circles at corners and midpoints of inner border
+    // Red circles
     const redCircleRadius = 5;
     const cornerOffset = playArea / 2 - innerInset;
     
-    // Corner red circles
     graphics.fillStyle(0xdc3545);
     graphics.fillCircle(x - cornerOffset, y - cornerOffset, redCircleRadius);
     graphics.fillCircle(x + cornerOffset, y - cornerOffset, redCircleRadius);
     graphics.fillCircle(x - cornerOffset, y + cornerOffset, redCircleRadius);
     graphics.fillCircle(x + cornerOffset, y + cornerOffset, redCircleRadius);
-    
-    // Midpoint red circles
     graphics.fillCircle(x, y - cornerOffset, redCircleRadius);
     graphics.fillCircle(x, y + cornerOffset, redCircleRadius);
     graphics.fillCircle(x - cornerOffset, y, redCircleRadius);
     graphics.fillCircle(x + cornerOffset, y, redCircleRadius);
 
-    // Center design
     this.drawCenterDesign(graphics, x, y);
-
-    // Corner lines
     this.drawCornerLines(graphics, x, y, size);
-
-    // Baselines
     this.drawBaselines(graphics, x, y, size);
-
-    // Create physics walls
     this.createWalls();
   }
 
   private drawCenterDesign(graphics: Phaser.GameObjects.Graphics, x: number, y: number): void {
-    // Outer circle
     graphics.lineStyle(2, 0x000000, 0.8);
     graphics.strokeCircle(x, y, 60);
     
-    // Inner circle
     graphics.lineStyle(1.5, 0x000000, 0.6);
     graphics.strokeCircle(x, y, 45);
 
-    // Draw 8-point star pattern (like real carrom)
     const outerRadius = 40;
     const innerRadius = 15;
     
-    // Draw alternating red and black star points
     for (let i = 0; i < 8; i++) {
       const angle = (i * Math.PI) / 4 - Math.PI / 2;
       const nextAngle = angle + Math.PI / 8;
       const prevAngle = angle - Math.PI / 8;
       
-      // Alternate colors: red and black
       const color = i % 2 === 0 ? 0xdc3545 : 0x1a1a1a;
       graphics.fillStyle(color);
       
@@ -322,11 +338,9 @@ export class GameScene extends Phaser.Scene {
       graphics.fillPath();
     }
 
-    // Center red circle
     graphics.fillStyle(0xdc3545);
     graphics.fillCircle(x, y, 8);
     
-    // Small black center dot
     graphics.fillStyle(0x000000);
     graphics.fillCircle(x, y, 3);
   }
@@ -336,7 +350,6 @@ export class GameScene extends Phaser.Scene {
     const lineLength = 35;
     graphics.lineStyle(2, COLORS.boardDark, 0.5);
 
-    // Diagonal lines pointing to corners
     const corners = [
       { cx: x - offset, cy: y - offset, angle: Math.PI * 1.25 },
       { cx: x + offset, cy: y - offset, angle: Math.PI * 1.75 },
@@ -353,7 +366,6 @@ export class GameScene extends Phaser.Scene {
       );
       graphics.strokePath();
       
-      // Small circles at the end
       graphics.fillStyle(COLORS.boardDark, 0.5);
       graphics.fillCircle(cx, cy, 4);
     });
@@ -365,13 +377,12 @@ export class GameScene extends Phaser.Scene {
 
     graphics.lineStyle(2, COLORS.boardDark, 0.6);
 
-    // Bottom baseline (current player)
+    // Bottom baseline
     graphics.beginPath();
     graphics.moveTo(x - baselineWidth / 2, y + baselineOffset);
     graphics.lineTo(x + baselineWidth / 2, y + baselineOffset);
     graphics.strokePath();
 
-    // Baseline circles
     graphics.fillStyle(COLORS.boardDark, 0.6);
     graphics.fillCircle(x - baselineWidth / 2, y + baselineOffset, 5);
     graphics.fillCircle(x + baselineWidth / 2, y + baselineOffset, 5);
@@ -390,9 +401,9 @@ export class GameScene extends Phaser.Scene {
     const cx = this.boardCenterX;
     const cy = this.boardCenterY;
     const playArea = BOARD_SIZE - 50;
-    const halfBoard = playArea / 2; // Inner edge of board
+    const halfBoard = playArea / 2;
     const wallThickness = 20;
-    const pocketGap = POCKET_RADIUS + 10; // Gap at corners for pockets
+    const pocketGap = POCKET_RADIUS + 10;
 
     const wallOptions = {
       isStatic: true,
@@ -401,83 +412,29 @@ export class GameScene extends Phaser.Scene {
       label: 'wall',
     };
 
-    // Wall segment length = side length minus corner gaps
     const sideLength = halfBoard * 2;
     const segmentLen = (sideLength - pocketGap * 2) / 2;
 
-    // Top wall - left segment
-    this.matter.add.rectangle(
-      cx - segmentLen / 2 - pocketGap / 2,
-      cy - halfBoard,
-      segmentLen,
-      wallThickness,
-      wallOptions
-    );
-    // Top wall - right segment
-    this.matter.add.rectangle(
-      cx + segmentLen / 2 + pocketGap / 2,
-      cy - halfBoard,
-      segmentLen,
-      wallThickness,
-      wallOptions
-    );
+    // Top wall
+    this.matter.add.rectangle(cx - segmentLen / 2 - pocketGap / 2, cy - halfBoard, segmentLen, wallThickness, wallOptions);
+    this.matter.add.rectangle(cx + segmentLen / 2 + pocketGap / 2, cy - halfBoard, segmentLen, wallThickness, wallOptions);
 
-    // Bottom wall - left segment
-    this.matter.add.rectangle(
-      cx - segmentLen / 2 - pocketGap / 2,
-      cy + halfBoard,
-      segmentLen,
-      wallThickness,
-      wallOptions
-    );
-    // Bottom wall - right segment
-    this.matter.add.rectangle(
-      cx + segmentLen / 2 + pocketGap / 2,
-      cy + halfBoard,
-      segmentLen,
-      wallThickness,
-      wallOptions
-    );
+    // Bottom wall
+    this.matter.add.rectangle(cx - segmentLen / 2 - pocketGap / 2, cy + halfBoard, segmentLen, wallThickness, wallOptions);
+    this.matter.add.rectangle(cx + segmentLen / 2 + pocketGap / 2, cy + halfBoard, segmentLen, wallThickness, wallOptions);
 
-    // Left wall - top segment
-    this.matter.add.rectangle(
-      cx - halfBoard,
-      cy - segmentLen / 2 - pocketGap / 2,
-      wallThickness,
-      segmentLen,
-      wallOptions
-    );
-    // Left wall - bottom segment
-    this.matter.add.rectangle(
-      cx - halfBoard,
-      cy + segmentLen / 2 + pocketGap / 2,
-      wallThickness,
-      segmentLen,
-      wallOptions
-    );
+    // Left wall
+    this.matter.add.rectangle(cx - halfBoard, cy - segmentLen / 2 - pocketGap / 2, wallThickness, segmentLen, wallOptions);
+    this.matter.add.rectangle(cx - halfBoard, cy + segmentLen / 2 + pocketGap / 2, wallThickness, segmentLen, wallOptions);
 
-    // Right wall - top segment
-    this.matter.add.rectangle(
-      cx + halfBoard,
-      cy - segmentLen / 2 - pocketGap / 2,
-      wallThickness,
-      segmentLen,
-      wallOptions
-    );
-    // Right wall - bottom segment
-    this.matter.add.rectangle(
-      cx + halfBoard,
-      cy + segmentLen / 2 + pocketGap / 2,
-      wallThickness,
-      segmentLen,
-      wallOptions
-    );
+    // Right wall
+    this.matter.add.rectangle(cx + halfBoard, cy - segmentLen / 2 - pocketGap / 2, wallThickness, segmentLen, wallOptions);
+    this.matter.add.rectangle(cx + halfBoard, cy + segmentLen / 2 + pocketGap / 2, wallThickness, segmentLen, wallOptions);
 
-    // Add corner blockers (angled pieces to guide balls toward pockets or bounce back)
+    // Corner blockers
     const cornerOffset = halfBoard - 5;
     const blockerSize = 15;
     
-    // These small corner pieces prevent balls from getting stuck in corner gaps
     const corners = [
       { x: cx - cornerOffset, y: cy - cornerOffset, angle: Math.PI / 4 },
       { x: cx + cornerOffset, y: cy - cornerOffset, angle: -Math.PI / 4 },
@@ -486,7 +443,6 @@ export class GameScene extends Phaser.Scene {
     ];
 
     corners.forEach(corner => {
-      // Small angled deflector near each pocket
       this.matter.add.rectangle(
         corner.x + Math.cos(corner.angle + Math.PI) * 12,
         corner.y + Math.sin(corner.angle + Math.PI) * 12,
@@ -501,7 +457,7 @@ export class GameScene extends Phaser.Scene {
     const x = this.boardCenterX;
     const y = this.boardCenterY;
     const playArea = BOARD_SIZE - 50;
-    const offset = playArea / 2 - 5; // Near corners of play area
+    const offset = playArea / 2 - 5;
 
     this.pockets = [
       { x: x - offset, y: y - offset },
@@ -513,19 +469,15 @@ export class GameScene extends Phaser.Scene {
     const graphics = this.add.graphics();
 
     this.pockets.forEach(pocket => {
-      // Outer glow/highlight
       graphics.fillStyle(COLORS.pocketHighlight, 0.6);
       graphics.fillCircle(pocket.x, pocket.y, POCKET_RADIUS + 8);
       
-      // Gold ring
       graphics.fillStyle(COLORS.pocketRing);
       graphics.fillCircle(pocket.x, pocket.y, POCKET_RADIUS + 4);
       
-      // Black pocket hole
       graphics.fillStyle(COLORS.pocket);
       graphics.fillCircle(pocket.x, pocket.y, POCKET_RADIUS);
       
-      // Inner shadow effect
       graphics.fillStyle(0x000000, 0.5);
       graphics.fillCircle(pocket.x + 2, pocket.y + 2, POCKET_RADIUS - 3);
     });
@@ -535,15 +487,15 @@ export class GameScene extends Phaser.Scene {
     const x = this.boardCenterX;
     const y = this.boardCenterY;
 
-    // Create queen (center)
+    // Queen in center
     this.createPiece(x, y, 'queen');
 
-    // Create inner ring pieces
+    // Inner ring
     INITIAL_POSITIONS.innerRing.forEach(pos => {
       this.createPiece(x + pos.x, y + pos.y, pos.color as 'white' | 'black');
     });
 
-    // Create outer ring pieces
+    // Outer ring
     INITIAL_POSITIONS.outerRing.forEach(pos => {
       this.createPiece(x + pos.x, y + pos.y, pos.color as 'white' | 'black');
     });
@@ -563,11 +515,9 @@ export class GameScene extends Phaser.Scene {
     piece.gameData = { type, pocketed: false };
     this.pieces.push(piece);
 
-    // Create graphics container
     const container = this.add.container(x, y);
     piece.gameData.graphics = container;
 
-    // Determine colors
     let mainColor: number, ringColor: number, highlightColor: number;
     if (type === 'queen') {
       mainColor = COLORS.queen;
@@ -585,23 +535,18 @@ export class GameScene extends Phaser.Scene {
 
     const graphics = this.add.graphics();
 
-    // Shadow
     graphics.fillStyle(0x000000, 0.3);
     graphics.fillCircle(2, 2, radius);
 
-    // Main piece body
     graphics.fillStyle(mainColor);
     graphics.fillCircle(0, 0, radius);
 
-    // Outer ring (3D effect)
     graphics.lineStyle(2, ringColor);
     graphics.strokeCircle(0, 0, radius - 1);
 
-    // Inner ring
     graphics.lineStyle(1.5, ringColor);
     graphics.strokeCircle(0, 0, radius * 0.6);
 
-    // Highlight (top-left shine)
     graphics.fillStyle(highlightColor, 0.3);
     graphics.fillCircle(-radius * 0.3, -radius * 0.3, radius * 0.25);
 
@@ -616,7 +561,6 @@ export class GameScene extends Phaser.Scene {
     this.sliderMaxX = this.boardCenterX + sliderWidth / 2 - 20;
     this.strikerSliderX = this.boardCenterX;
 
-    // Slider track
     const track = this.add.graphics();
     track.fillStyle(COLORS.sliderTrack, 0.8);
     track.fillRoundedRect(
@@ -627,7 +571,6 @@ export class GameScene extends Phaser.Scene {
       12
     );
     
-    // Inner track shadow
     track.fillStyle(0x000000, 0.3);
     track.fillRoundedRect(
       this.boardCenterX - sliderWidth / 2 + 4,
@@ -637,7 +580,6 @@ export class GameScene extends Phaser.Scene {
       8
     );
 
-    // Slider thumb (striker icon)
     this.strikerSlider = this.add.container(this.strikerSliderX, sliderY);
     
     const thumbGraphics = this.add.graphics();
@@ -646,7 +588,6 @@ export class GameScene extends Phaser.Scene {
     thumbGraphics.fillStyle(COLORS.sliderThumb);
     thumbGraphics.fillCircle(0, 0, 14);
     
-    // Star icon
     thumbGraphics.fillStyle(COLORS.strikerStar);
     this.drawStar(thumbGraphics, 0, 0, 5, 6, 3);
     
@@ -656,17 +597,15 @@ export class GameScene extends Phaser.Scene {
       Phaser.Geom.Circle.Contains
     );
 
-    // Make slider draggable
     this.input.setDraggable(this.strikerSlider);
     
     this.strikerSlider.on('drag', (_pointer: Phaser.Input.Pointer, dragX: number) => {
-      if (this.isStrikerMoving) return;
+      if (this.isStrikerMoving || this.isAITurn) return;
       
       const newX = Phaser.Math.Clamp(dragX, this.sliderMinX, this.sliderMaxX);
       this.strikerSlider.x = newX;
       this.strikerSliderX = newX;
       
-      // Update striker position
       this.matter.body.setPosition(this.striker, {
         x: newX,
         y: this.strikerBaseY,
@@ -707,28 +646,22 @@ export class GameScene extends Phaser.Scene {
 
     this.striker.gameData = { type: 'striker', pocketed: false };
 
-    // Create striker graphics
     this.strikerGraphics = this.add.container(x, y);
 
     const graphics = this.add.graphics();
     
-    // Shadow
     graphics.fillStyle(0x000000, 0.3);
     graphics.fillCircle(2, 2, STRIKER_RADIUS);
     
-    // Main body (white)
     graphics.fillStyle(COLORS.striker);
     graphics.fillCircle(0, 0, STRIKER_RADIUS);
     
-    // Red outer ring
     graphics.lineStyle(3, COLORS.strikerRing);
     graphics.strokeCircle(0, 0, STRIKER_RADIUS - 2);
     
-    // Red star in center
     graphics.fillStyle(COLORS.strikerStar);
     this.drawStar(graphics, 0, 0, 5, 8, 4);
     
-    // Highlight
     graphics.fillStyle(0xffffff, 0.4);
     graphics.fillCircle(-STRIKER_RADIUS * 0.3, -STRIKER_RADIUS * 0.3, STRIKER_RADIUS * 0.25);
 
@@ -736,32 +669,25 @@ export class GameScene extends Phaser.Scene {
   }
 
   private createUI(): void {
-    // Player info - top area
     const panelY = 50;
     
-    // Left player (You)
-    this.createPlayerPanel(60, panelY, 'You', this.whiteScore, true);
+    // Player panels
+    this.createPlayerPanel(60, panelY, 'You', true);
+    this.createPlayerPanel(GAME_WIDTH - 60, panelY, 'CPU', false);
     
-    // Right player (Opponent)
-    this.createPlayerPanel(GAME_WIDTH - 60, panelY, 'CPU', this.blackScore, false);
-    
-    // Coins display (center top)
-    const coinsContainer = this.add.container(GAME_WIDTH / 2, panelY);
-    
-    const coinBg = this.add.graphics();
-    coinBg.fillStyle(0x000000, 0.3);
-    coinBg.fillRoundedRect(-40, -20, 80, 40, 10);
-    
-    const coinIcon = this.add.text(-25, 0, '🪙', { font: '20px Arial' });
-    coinIcon.setOrigin(0.5);
-    
-    const coinText = this.add.text(10, 0, '1000', {
+    // Turn indicator
+    this.turnIndicator = this.add.container(GAME_WIDTH / 2, panelY);
+    this.updateTurnIndicator();
+
+    // Message text
+    this.messageText = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 40, '', {
       font: 'bold 16px Arial',
-      color: '#ffd700',
+      color: '#ffffff',
+      backgroundColor: '#00000088',
+      padding: { x: 12, y: 6 },
     });
-    coinText.setOrigin(0.5);
-    
-    coinsContainer.add([coinBg, coinIcon, coinText]);
+    this.messageText.setOrigin(0.5);
+    this.messageText.setVisible(false);
 
     // Back button
     const backButton = this.add.text(20, 20, '✕', {
@@ -772,53 +698,73 @@ export class GameScene extends Phaser.Scene {
     backButton.on('pointerdown', () => this.scene.start('Menu'));
   }
 
-  private createPlayerPanel(x: number, y: number, name: string, score: number, isLeft: boolean): void {
+  private updateTurnIndicator(): void {
+    this.turnIndicator.removeAll(true);
+    
+    const bg = this.add.graphics();
+    bg.fillStyle(0x000000, 0.4);
+    bg.fillRoundedRect(-50, -18, 100, 36, 8);
+    
+    const isHumanTurn = this.currentPlayer === this.humanPlayer;
+    const turnText = this.add.text(0, 0, isHumanTurn ? '🎯 Your Turn' : '🤖 CPU Turn', {
+      font: 'bold 14px Arial',
+      color: isHumanTurn ? '#44ff44' : '#ff8844',
+    });
+    turnText.setOrigin(0.5);
+    
+    this.turnIndicator.add([bg, turnText]);
+  }
+
+  private showMessage(text: string, duration = 2000): void {
+    this.messageText.setText(text);
+    this.messageText.setVisible(true);
+    this.messageText.setAlpha(1);
+    
+    this.tweens.add({
+      targets: this.messageText,
+      alpha: 0,
+      delay: duration - 500,
+      duration: 500,
+      onComplete: () => this.messageText.setVisible(false),
+    });
+  }
+
+  private createPlayerPanel(x: number, y: number, name: string, isHuman: boolean): void {
     const container = this.add.container(x, y);
     
-    // Avatar background
     const avatarBg = this.add.graphics();
     avatarBg.fillStyle(COLORS.boardBorder);
     avatarBg.fillRoundedRect(-25, -25, 50, 50, 8);
     
-    // Avatar placeholder
     const avatar = this.add.graphics();
-    avatar.fillStyle(isLeft ? 0x4a90d9 : 0xd94a4a);
+    avatar.fillStyle(isHuman ? 0x4a90d9 : 0xd94a4a);
     avatar.fillRoundedRect(-22, -22, 44, 44, 6);
     
-    // Avatar emoji
-    const emoji = this.add.text(0, -5, isLeft ? '😊' : '🤖', { font: '24px Arial' });
+    const emoji = this.add.text(0, -5, isHuman ? '😊' : '🤖', { font: '24px Arial' });
     emoji.setOrigin(0.5);
     
-    // Name
     const nameText = this.add.text(0, 40, name, {
       font: '14px Arial',
       color: '#ffffff',
     });
     nameText.setOrigin(0.5);
     
-    // Score with piece icon
-    const scoreContainer = this.add.container(0, 60);
+    // Piece color indicator
+    const pieceColor = isHuman ? COLORS.whitePiece : COLORS.blackPiece;
+    const pieceRing = isHuman ? COLORS.whitePieceRing : COLORS.blackPieceRing;
     
     const pieceIcon = this.add.graphics();
-    pieceIcon.fillStyle(isLeft ? COLORS.whitePiece : COLORS.blackPiece);
-    pieceIcon.fillCircle(-15, 0, 8);
-    pieceIcon.lineStyle(1, isLeft ? COLORS.whitePieceRing : COLORS.blackPieceRing);
-    pieceIcon.strokeCircle(-15, 0, 8);
+    pieceIcon.fillStyle(pieceColor);
+    pieceIcon.fillCircle(0, 60, 10);
+    pieceIcon.lineStyle(2, pieceRing);
+    pieceIcon.strokeCircle(0, 60, 10);
     
-    const scoreText = this.add.text(5, 0, score.toString(), {
-      font: 'bold 18px Arial',
-      color: '#ffffff',
-    });
-    scoreText.setOrigin(0.5);
-    
-    scoreContainer.add([pieceIcon, scoreText]);
-    container.add([avatarBg, avatar, emoji, nameText, scoreContainer]);
+    container.add([avatarBg, avatar, emoji, nameText, pieceIcon]);
   }
 
   private setupInput(): void {
-    // Aiming from striker
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      if (this.isStrikerMoving) return;
+      if (this.isStrikerMoving || this.isAITurn) return;
       
       const distance = Phaser.Math.Distance.Between(
         pointer.x, pointer.y,
@@ -832,7 +778,7 @@ export class GameScene extends Phaser.Scene {
     });
 
     this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
-      if (!this.isAiming || !this.dragStart || this.isStrikerMoving) return;
+      if (!this.isAiming || !this.dragStart || this.isStrikerMoving || this.isAITurn) return;
       this.drawAimLine(pointer);
     });
 
@@ -858,7 +804,6 @@ export class GameScene extends Phaser.Scene {
 
     this.aimLine.clear();
     
-    // Dotted aim line
     this.aimLine.lineStyle(2, COLORS.aimLine, 0.8);
     const lineLength = distance * 1.5;
     const dotSpacing = 8;
@@ -875,7 +820,6 @@ export class GameScene extends Phaser.Scene {
       this.aimLine.strokePath();
     }
 
-    // Power indicator circle around striker
     this.powerIndicator.clear();
     const indicatorColor = power > 0.7 ? 0xff4444 : (power > 0.4 ? 0xffaa00 : 0x44ff44);
     this.powerIndicator.lineStyle(3, indicatorColor, 0.6);
@@ -893,7 +837,7 @@ export class GameScene extends Phaser.Scene {
     const dy = this.dragStart.y - pointer.y;
     const distance = Math.min(Math.sqrt(dx * dx + dy * dy), 100);
     
-    if (distance < 10) return; // Minimum drag distance
+    if (distance < 10) return;
     
     const power = (distance / 100) * STRIKER_MAX_POWER;
     const angle = Math.atan2(dy, dx);
@@ -903,6 +847,7 @@ export class GameScene extends Phaser.Scene {
 
     this.matter.body.setVelocity(this.striker, { x: velocityX, y: velocityY });
     this.isStrikerMoving = true;
+    this.resetTurnResult();
     this.playSound('shoot');
   }
 
@@ -912,11 +857,9 @@ export class GameScene extends Phaser.Scene {
         const labelA = (pair.bodyA as any).label;
         const labelB = (pair.bodyB as any).label;
 
-        // Wall collision
         if (labelA === 'wall' || labelB === 'wall') {
           this.playSound('wall');
         } 
-        // Piece-to-piece or striker-to-piece collision
         else if ((labelA === 'piece' || labelA === 'striker') && 
                  (labelB === 'piece' || labelB === 'striker')) {
           this.playSound('hit');
@@ -925,40 +868,7 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  private createHitEffect(x: number, y: number): void {
-    // Quick flash effect at collision point
-    const flash = this.add.graphics();
-    flash.fillStyle(0xffffff, 0.6);
-    flash.fillCircle(x, y, 8);
-    
-    this.tweens.add({
-      targets: flash,
-      alpha: 0,
-      scaleX: 2,
-      scaleY: 2,
-      duration: 150,
-      onComplete: () => flash.destroy(),
-    });
-  }
-
-  private createWallBounceEffect(x: number, y: number): void {
-    // Spark effect when hitting wall
-    const spark = this.add.graphics();
-    spark.fillStyle(0xffd700, 0.8);
-    spark.fillCircle(x, y, 6);
-    
-    this.tweens.add({
-      targets: spark,
-      alpha: 0,
-      scaleX: 1.5,
-      scaleY: 1.5,
-      duration: 200,
-      onComplete: () => spark.destroy(),
-    });
-  }
-
   private createPocketEffect(x: number, y: number, color: number): void {
-    // Particle burst effect
     for (let i = 0; i < 12; i++) {
       const angle = (i / 12) * Math.PI * 2;
       const particle = this.add.graphics();
@@ -978,7 +888,6 @@ export class GameScene extends Phaser.Scene {
       });
     }
 
-    // Flash ring
     const ring = this.add.graphics();
     ring.lineStyle(4, 0xffd700, 1);
     ring.strokeCircle(x, y, 10);
@@ -995,22 +904,19 @@ export class GameScene extends Phaser.Scene {
   }
 
   update(): void {
-    // Update piece graphics positions
+    // Update piece graphics
     this.pieces.forEach(piece => {
       if (piece.gameData?.graphics && !piece.gameData.pocketed) {
         piece.gameData.graphics.setPosition(piece.position.x, piece.position.y);
       }
     });
 
-    // Update striker graphics
     if (this.strikerGraphics) {
       this.strikerGraphics.setPosition(this.striker.position.x, this.striker.position.y);
     }
 
-    // Keep pieces inside board boundaries
     this.constrainPieces();
 
-    // Check if all pieces stopped
     if (this.isStrikerMoving) {
       if (this.checkAllStopped()) {
         this.isStrikerMoving = false;
@@ -1018,7 +924,6 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
-    // Check pockets
     this.checkPockets();
   }
 
@@ -1029,7 +934,6 @@ export class GameScene extends Phaser.Scene {
     const minY = this.boardTop + padding;
     const maxY = this.boardBottom - padding;
 
-    // Constrain striker
     const sx = this.striker.position.x;
     const sy = this.striker.position.y;
     if (sx < minX || sx > maxX || sy < minY || sy > maxY) {
@@ -1037,7 +941,6 @@ export class GameScene extends Phaser.Scene {
         x: Phaser.Math.Clamp(sx, minX, maxX),
         y: Phaser.Math.Clamp(sy, minY, maxY),
       });
-      // Reverse velocity component that went out
       const vel = this.striker.velocity;
       this.matter.body.setVelocity(this.striker, {
         x: sx < minX || sx > maxX ? -vel.x * 0.7 : vel.x,
@@ -1045,7 +948,6 @@ export class GameScene extends Phaser.Scene {
       });
     }
 
-    // Constrain pieces
     this.pieces.forEach(piece => {
       if (piece.gameData?.pocketed) return;
       const px = piece.position.x;
@@ -1115,6 +1017,9 @@ export class GameScene extends Phaser.Scene {
 
   private pocketStriker(): void {
     this.playSound('pocket');
+    this.turnResult.pocketedStriker = true;
+    
+    // Reset striker position
     this.matter.body.setPosition(this.striker, {
       x: this.strikerSliderX,
       y: this.strikerBaseY,
@@ -1126,24 +1031,34 @@ export class GameScene extends Phaser.Scene {
     if (!piece.gameData) return;
 
     piece.gameData.pocketed = true;
+    const type = piece.gameData.type;
     
-    // Play sound
+    // Track what was pocketed this turn
+    if (type !== 'striker') {
+      this.turnResult.piecesThisTurn.push(type);
+    }
+    
+    if (type === 'queen') {
+      this.turnResult.pocketedQueen = true;
+    } else if (type === this.currentPlayer) {
+      this.turnResult.pocketedOwn = true;
+    } else if (type === 'white' || type === 'black') {
+      this.turnResult.pocketedOpponent = true;
+    }
+    
     this.playSound('pocket');
     
-    // Get color for effect
     let color = 0xffffff;
-    if (piece.gameData.type === 'queen') {
+    if (type === 'queen') {
       color = COLORS.queen;
-    } else if (piece.gameData.type === 'white') {
+    } else if (type === 'white') {
       color = COLORS.whitePiece;
     } else {
       color = COLORS.blackPiece;
     }
     
-    // Create pocket animation
     this.createPocketEffect(pocket.x, pocket.y, color);
     
-    // Animate piece shrinking into pocket
     if (piece.gameData.graphics) {
       this.tweens.add({
         targets: piece.gameData.graphics,
@@ -1164,44 +1079,483 @@ export class GameScene extends Phaser.Scene {
     this.matter.body.setPosition(piece, { x: -100, y: -100 });
     this.matter.body.setVelocity(piece, { x: 0, y: 0 });
     this.matter.body.setStatic(piece, true);
-
-    if (piece.gameData.type === 'white') {
-      if (this.currentPlayer === 'white') this.whiteScore++;
-    } else if (piece.gameData.type === 'black') {
-      if (this.currentPlayer === 'black') this.blackScore++;
-    } else if (piece.gameData.type === 'queen') {
-      this.queenPocketed = true;
-    }
-
-    this.checkWinCondition();
   }
 
   private handleTurnEnd(): void {
+    // Reset striker to baseline
     this.matter.body.setPosition(this.striker, {
       x: this.strikerSliderX,
       y: this.strikerBaseY,
     });
     this.matter.body.setVelocity(this.striker, { x: 0, y: 0 });
 
-    this.currentPlayer = this.currentPlayer === 'white' ? 'black' : 'white';
-  }
+    // Process turn results
+    const result = this.turnResult;
+    let continuesTurn = false;
+    let message = '';
 
-  private checkWinCondition(): void {
-    const whitePieces = this.pieces.filter(p => p.gameData?.type === 'white' && !p.gameData?.pocketed);
-    const blackPieces = this.pieces.filter(p => p.gameData?.type === 'black' && !p.gameData?.pocketed);
+    // Handle striker pocketed (foul)
+    if (result.pocketedStriker) {
+      message = 'Foul! Striker pocketed.';
+      // Return one of player's pocketed pieces if any
+      this.returnPieceAsPenalty();
+    }
 
-    if (whitePieces.length === 0 && this.queenPocketed) {
-      this.endGame('white');
-    } else if (blackPieces.length === 0 && this.queenPocketed) {
-      this.endGame('black');
+    // Handle queen pocketing and covering
+    if (result.pocketedQueen && !this.queenCovered) {
+      this.queenPocketed = true;
+      this.queenPocketedBy = this.currentPlayer;
+      this.needsCover = true;
+      
+      // Check if also pocketed own piece in same turn (auto-cover)
+      const ownPiecesThisTurn = result.piecesThisTurn.filter(t => t === this.currentPlayer);
+      if (ownPiecesThisTurn.length > 0) {
+        // Queen covered!
+        this.queenCovered = true;
+        this.needsCover = false;
+        if (this.currentPlayer === 'white') {
+          this.whiteScore += 3;
+        } else {
+          this.blackScore += 3;
+        }
+        message = 'Queen covered! +3 points';
+        continuesTurn = true;
+      } else {
+        message = 'Queen pocketed! Cover it next turn.';
+        continuesTurn = true; // Gets another turn to cover
+      }
+    } else if (this.needsCover && this.queenPocketedBy === this.currentPlayer) {
+      // Player needs to cover queen
+      const ownPiecesThisTurn = result.piecesThisTurn.filter(t => t === this.currentPlayer);
+      if (ownPiecesThisTurn.length > 0) {
+        // Covered!
+        this.queenCovered = true;
+        this.needsCover = false;
+        if (this.currentPlayer === 'white') {
+          this.whiteScore += 3;
+        } else {
+          this.blackScore += 3;
+        }
+        message = 'Queen covered! +3 points';
+        continuesTurn = true;
+      } else {
+        // Failed to cover - queen goes back to center
+        this.returnQueenToCenter();
+        this.queenPocketed = false;
+        this.queenPocketedBy = null;
+        this.needsCover = false;
+        message = 'Failed to cover queen! Queen returns.';
+      }
+    } else if (!result.pocketedStriker) {
+      // Normal turn - check if pocketed own pieces
+      if (result.pocketedOwn && !result.pocketedOpponent) {
+        const count = result.piecesThisTurn.filter(t => t === this.currentPlayer).length;
+        if (this.currentPlayer === 'white') {
+          this.whiteScore += count;
+        } else {
+          this.blackScore += count;
+        }
+        message = `+${count} piece${count > 1 ? 's' : ''}! Continue.`;
+        continuesTurn = true;
+      } else if (result.pocketedOpponent) {
+        message = 'Pocketed opponent piece. Turn ends.';
+      }
+    }
+
+    // Check win condition
+    if (this.checkWinCondition()) {
+      return;
+    }
+
+    // Show message
+    if (message) {
+      this.showMessage(message);
+    }
+
+    // Switch turns or continue
+    if (!continuesTurn || result.pocketedStriker) {
+      this.switchTurn();
+    } else {
+      // Same player continues
+      this.updateTurnIndicator();
+      if (this.currentPlayer !== this.humanPlayer) {
+        this.scheduleAITurn();
+      }
     }
   }
 
+  private returnPieceAsPenalty(): void {
+    // Find a pocketed piece of current player to return
+    const pocketedPiece = this.pieces.find(
+      p => p.gameData?.type === this.currentPlayer && p.gameData?.pocketed
+    );
+    
+    if (pocketedPiece && pocketedPiece.gameData) {
+      pocketedPiece.gameData.pocketed = false;
+      this.matter.body.setStatic(pocketedPiece, false);
+      
+      // Return to center area
+      const offset = (Math.random() - 0.5) * 40;
+      this.matter.body.setPosition(pocketedPiece, {
+        x: this.boardCenterX + offset,
+        y: this.boardCenterY + offset,
+      });
+      
+      if (pocketedPiece.gameData.graphics) {
+        pocketedPiece.gameData.graphics.setVisible(true);
+        pocketedPiece.gameData.graphics.setScale(1);
+        pocketedPiece.gameData.graphics.setPosition(
+          this.boardCenterX + offset,
+          this.boardCenterY + offset
+        );
+      }
+      
+      // Deduct score
+      if (this.currentPlayer === 'white') {
+        this.whiteScore = Math.max(0, this.whiteScore - 1);
+      } else {
+        this.blackScore = Math.max(0, this.blackScore - 1);
+      }
+    }
+  }
+
+  private returnQueenToCenter(): void {
+    const queen = this.pieces.find(p => p.gameData?.type === 'queen');
+    if (queen && queen.gameData) {
+      queen.gameData.pocketed = false;
+      this.matter.body.setStatic(queen, false);
+      this.matter.body.setPosition(queen, {
+        x: this.boardCenterX,
+        y: this.boardCenterY,
+      });
+      
+      if (queen.gameData.graphics) {
+        queen.gameData.graphics.setVisible(true);
+        queen.gameData.graphics.setScale(1);
+        queen.gameData.graphics.setPosition(this.boardCenterX, this.boardCenterY);
+      }
+    }
+  }
+
+  private switchTurn(): void {
+    this.currentPlayer = this.currentPlayer === 'white' ? 'black' : 'white';
+    this.updateTurnIndicator();
+    
+    // Move striker to correct side
+    if (this.currentPlayer === 'white') {
+      this.strikerBaseY = this.boardCenterY + BOARD_SIZE / 2 - 35;
+    } else {
+      this.strikerBaseY = this.boardCenterY - BOARD_SIZE / 2 + 35;
+    }
+    
+    this.matter.body.setPosition(this.striker, {
+      x: this.strikerSliderX,
+      y: this.strikerBaseY,
+    });
+    this.strikerGraphics.setPosition(this.strikerSliderX, this.strikerBaseY);
+    
+    // Update slider position
+    const sliderY = this.strikerBaseY + (this.currentPlayer === 'white' ? 50 : -50);
+    this.strikerSlider.setY(sliderY);
+    
+    if (this.currentPlayer !== this.humanPlayer) {
+      this.scheduleAITurn();
+    } else {
+      this.isAITurn = false;
+      this.showMessage('Your turn!');
+    }
+  }
+
+  private scheduleAITurn(): void {
+    this.isAITurn = true;
+    this.showMessage('CPU thinking...', 1500);
+    
+    this.time.delayedCall(this.aiThinkingDelay, () => {
+      this.executeAITurn();
+    });
+  }
+
+  private executeAITurn(): void {
+    // Find target pieces (AI's own pieces that aren't pocketed)
+    const aiPieces = this.pieces.filter(
+      p => p.gameData?.type === 'black' && !p.gameData?.pocketed
+    );
+    
+    // Also consider queen if not yet pocketed
+    const queen = this.pieces.find(p => p.gameData?.type === 'queen' && !p.gameData?.pocketed);
+    
+    if (aiPieces.length === 0 && (!queen || this.queenCovered)) {
+      // AI has no pieces left - shouldn't happen normally
+      this.switchTurn();
+      return;
+    }
+    
+    // Find best shot
+    const bestShot = this.calculateBestAIShot(aiPieces, queen);
+    
+    if (bestShot) {
+      // Position striker
+      this.strikerSliderX = Phaser.Math.Clamp(bestShot.strikerX, this.sliderMinX, this.sliderMaxX);
+      this.matter.body.setPosition(this.striker, {
+        x: this.strikerSliderX,
+        y: this.strikerBaseY,
+      });
+      this.strikerGraphics.setPosition(this.strikerSliderX, this.strikerBaseY);
+      this.strikerSlider.setX(this.strikerSliderX);
+      
+      // Execute shot after brief delay
+      this.time.delayedCall(300, () => {
+        this.matter.body.setVelocity(this.striker, {
+          x: bestShot.velocityX,
+          y: bestShot.velocityY,
+        });
+        this.isStrikerMoving = true;
+        this.resetTurnResult();
+        this.playSound('shoot');
+      });
+    } else {
+      // Random shot if no good shot found
+      this.executeRandomAIShot();
+    }
+  }
+
+  private calculateBestAIShot(
+    aiPieces: Piece[],
+    queen: Piece | undefined
+  ): { strikerX: number; velocityX: number; velocityY: number } | null {
+    let bestShot: { strikerX: number; velocityX: number; velocityY: number; score: number } | null = null;
+    
+    const targets: Piece[] = [...aiPieces];
+    
+    // Prioritize queen if AI needs to cover or if many pieces are gone
+    if (queen && !this.queenCovered) {
+      if (this.needsCover && this.queenPocketedBy === 'black') {
+        // Must try to cover queen
+        targets.unshift(...aiPieces); // Prioritize own pieces to cover
+      } else if (aiPieces.length <= 3) {
+        // Consider pocketing queen when few pieces left
+        targets.push(queen);
+      }
+    }
+    
+    // Try different striker positions
+    const strikerPositions = [
+      this.boardCenterX - 60,
+      this.boardCenterX - 30,
+      this.boardCenterX,
+      this.boardCenterX + 30,
+      this.boardCenterX + 60,
+    ];
+    
+    for (const strikerX of strikerPositions) {
+      for (const target of targets) {
+        for (const pocket of this.pockets) {
+          const shot = this.evaluateShot(strikerX, target, pocket);
+          if (shot && (!bestShot || shot.score > bestShot.score)) {
+            bestShot = shot;
+          }
+        }
+      }
+    }
+    
+    return bestShot;
+  }
+
+  private evaluateShot(
+    strikerX: number,
+    target: Piece,
+    pocket: { x: number; y: number }
+  ): { strikerX: number; velocityX: number; velocityY: number; score: number } | null {
+    const strikerY = this.strikerBaseY;
+    const targetX = target.position.x;
+    const targetY = target.position.y;
+    
+    // Calculate angle from target to pocket
+    const targetToPocketAngle = Math.atan2(pocket.y - targetY, pocket.x - targetX);
+    
+    // Calculate where striker needs to hit target (opposite side from pocket)
+    const hitPointX = targetX - Math.cos(targetToPocketAngle) * (PIECE_RADIUS + STRIKER_RADIUS);
+    const hitPointY = targetY - Math.sin(targetToPocketAngle) * (PIECE_RADIUS + STRIKER_RADIUS);
+    
+    // Calculate angle from striker to hit point
+    const strikerToHitAngle = Math.atan2(hitPointY - strikerY, hitPointX - strikerX);
+    const distanceToHit = Phaser.Math.Distance.Between(strikerX, strikerY, hitPointX, hitPointY);
+    
+    // Check if shot is blocked by other pieces
+    const isBlocked = this.isPathBlocked(strikerX, strikerY, hitPointX, hitPointY, target);
+    if (isBlocked) {
+      return null;
+    }
+    
+    // Calculate distance from target to pocket
+    const distanceToPocket = Phaser.Math.Distance.Between(targetX, targetY, pocket.x, pocket.y);
+    
+    // Score the shot (prefer closer targets and closer pockets)
+    let score = 100 - distanceToHit * 0.1 - distanceToPocket * 0.2;
+    
+    // Bonus for queen if it helps
+    if (target.gameData?.type === 'queen') {
+      score -= 20; // Slight penalty for queen (risky)
+    }
+    
+    // Calculate power needed
+    const power = Math.min(distanceToHit / 200, 0.8) * STRIKER_MAX_POWER;
+    
+    return {
+      strikerX,
+      velocityX: Math.cos(strikerToHitAngle) * power,
+      velocityY: Math.sin(strikerToHitAngle) * power,
+      score,
+    };
+  }
+
+  private isPathBlocked(
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number,
+    targetPiece: Piece
+  ): boolean {
+    for (const piece of this.pieces) {
+      if (piece === targetPiece || piece.gameData?.pocketed) continue;
+      
+      const px = piece.position.x;
+      const py = piece.position.y;
+      
+      // Check if piece is near the line path
+      const dist = this.pointToLineDistance(px, py, startX, startY, endX, endY);
+      if (dist < PIECE_RADIUS + STRIKER_RADIUS) {
+        // Check if piece is between start and end
+        const dotProduct = (px - startX) * (endX - startX) + (py - startY) * (endY - startY);
+        const lineLength = Math.pow(endX - startX, 2) + Math.pow(endY - startY, 2);
+        const t = dotProduct / lineLength;
+        
+        if (t > 0.1 && t < 0.9) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  private pointToLineDistance(
+    px: number,
+    py: number,
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number
+  ): number {
+    const A = px - x1;
+    const B = py - y1;
+    const C = x2 - x1;
+    const D = y2 - y1;
+    
+    const dot = A * C + B * D;
+    const lenSq = C * C + D * D;
+    let param = -1;
+    
+    if (lenSq !== 0) param = dot / lenSq;
+    
+    let xx, yy;
+    
+    if (param < 0) {
+      xx = x1;
+      yy = y1;
+    } else if (param > 1) {
+      xx = x2;
+      yy = y2;
+    } else {
+      xx = x1 + param * C;
+      yy = y1 + param * D;
+    }
+    
+    const dx = px - xx;
+    const dy = py - yy;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  private executeRandomAIShot(): void {
+    // Random striker position
+    this.strikerSliderX = Phaser.Math.FloatBetween(this.sliderMinX, this.sliderMaxX);
+    this.matter.body.setPosition(this.striker, {
+      x: this.strikerSliderX,
+      y: this.strikerBaseY,
+    });
+    this.strikerGraphics.setPosition(this.strikerSliderX, this.strikerBaseY);
+    this.strikerSlider.setX(this.strikerSliderX);
+    
+    // Find a random AI piece to aim at
+    const aiPieces = this.pieces.filter(
+      p => p.gameData?.type === 'black' && !p.gameData?.pocketed
+    );
+    
+    if (aiPieces.length === 0) {
+      this.switchTurn();
+      return;
+    }
+    
+    const target = Phaser.Utils.Array.GetRandom(aiPieces);
+    const angle = Math.atan2(
+      target.position.y - this.strikerBaseY,
+      target.position.x - this.strikerSliderX
+    );
+    
+    const power = Phaser.Math.FloatBetween(0.4, 0.7) * STRIKER_MAX_POWER;
+    
+    this.time.delayedCall(300, () => {
+      this.matter.body.setVelocity(this.striker, {
+        x: Math.cos(angle) * power,
+        y: Math.sin(angle) * power,
+      });
+      this.isStrikerMoving = true;
+      this.resetTurnResult();
+      this.playSound('shoot');
+    });
+  }
+
+  private checkWinCondition(): boolean {
+    const whitePieces = this.pieces.filter(
+      p => p.gameData?.type === 'white' && !p.gameData?.pocketed
+    );
+    const blackPieces = this.pieces.filter(
+      p => p.gameData?.type === 'black' && !p.gameData?.pocketed
+    );
+
+    // To win: pocket all your pieces AND have queen covered (or queen not yet in play)
+    if (whitePieces.length === 0 && (this.queenCovered || !this.queenPocketed)) {
+      // White wins only if queen was covered (if it was pocketed)
+      if (this.queenPocketed && !this.queenCovered) {
+        // Can't win without covering queen
+        return false;
+      }
+      this.endGame('white');
+      return true;
+    } else if (blackPieces.length === 0 && (this.queenCovered || !this.queenPocketed)) {
+      if (this.queenPocketed && !this.queenCovered) {
+        return false;
+      }
+      this.endGame('black');
+      return true;
+    }
+
+    return false;
+  }
+
   private endGame(winner: 'white' | 'black'): void {
+    // Calculate final scores
+    const loserPiecesLeft = winner === 'white' 
+      ? this.pieces.filter(p => p.gameData?.type === 'black' && !p.gameData?.pocketed).length
+      : this.pieces.filter(p => p.gameData?.type === 'white' && !p.gameData?.pocketed).length;
+    
+    const finalWhiteScore = winner === 'white' ? this.whiteScore + loserPiecesLeft : this.whiteScore;
+    const finalBlackScore = winner === 'black' ? this.blackScore + loserPiecesLeft : this.blackScore;
+    
     this.scene.start('GameOver', {
       winner,
-      whiteScore: this.whiteScore,
-      blackScore: this.blackScore,
+      whiteScore: finalWhiteScore,
+      blackScore: finalBlackScore,
+      isHumanWinner: winner === this.humanPlayer,
     });
   }
 }
