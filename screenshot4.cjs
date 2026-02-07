@@ -3,7 +3,7 @@ const { chromium } = require('playwright');
 
 async function main() {
   console.log('Starting Vite server...');
-  const vite = spawn('npx', ['vite', '--port', '3097'], {
+  const vite = spawn('npx', ['vite', '--port', '3096'], {
     cwd: process.cwd(),
     stdio: ['pipe', 'pipe', 'pipe']
   });
@@ -11,7 +11,7 @@ async function main() {
   let serverReady = false;
   vite.stdout.on('data', (data) => {
     const str = data.toString();
-    if (str.includes('localhost:3097')) serverReady = true;
+    if (str.includes('localhost:3096')) serverReady = true;
   });
   
   for (let i = 0; i < 30; i++) {
@@ -23,21 +23,16 @@ async function main() {
   const browser = await chromium.launch({ headless: true });
   
   try {
-    // Phaser version - click Play vs CPU
     const page = await browser.newPage({ viewport: { width: 500, height: 850 } });
-    await page.goto('http://localhost:3097/', { waitUntil: 'networkidle', timeout: 30000 });
+    await page.goto('http://localhost:3096/', { waitUntil: 'networkidle', timeout: 30000 });
     await page.waitForTimeout(2000);
     
-    // Click on VS CPU button
-    try {
-      await page.click('text=VS CPU', { timeout: 5000 });
-      await page.waitForTimeout(3000);
-    } catch (e) {
-      console.log('Could not click VS CPU');
-    }
+    // Click anywhere on VS CPU button area (coordinates)
+    await page.mouse.click(250, 490);
+    await page.waitForTimeout(4000);
     
-    await page.screenshot({ path: '/tmp/phaser-game.png' });
-    console.log('Phaser game screenshot saved');
+    await page.screenshot({ path: '/tmp/phaser-game-v2.png' });
+    console.log('Screenshot saved');
     await page.close();
   } catch (e) {
     console.error('Error:', e.message);

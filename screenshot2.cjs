@@ -1,17 +1,40 @@
+const { spawn } = require('child_process');
 const { chromium } = require('playwright');
 
-(async () => {
-  const browser = await chromium.launch();
-  const page = await browser.newPage({ viewport: { width: 800, height: 800 } });
+async function main() {
+  console.log('Starting Vite server...');
+  const vite = spawn('npx', ['vite', '--port', '3098'], {
+    cwd: process.cwd(),
+    stdio: ['pipe', 'pipe', 'pipe']
+  });
   
-  await page.goto('http://localhost:3001');
-  await page.waitForTimeout(2000);
+  let serverReady = false;
+  vite.stdout.on('data', (data) => {
+    const str = data.toString();
+    if (str.includes('localhost:3098')) serverReady = true;
+  });
   
-  // Click at center where PLAY button should be (based on game code: centerY + 180)
-  await page.mouse.click(400, 580);
-  await page.waitForTimeout(1500);
-  await page.screenshot({ path: 'screenshot-game.png' });
-  console.log('Game screenshot saved');
+  for (let i = 0; i < 30; i++) {
+    if (serverReady) break;
+    await new Promise(r => setTimeout(r, 500));
+  }
+  await new Promise(r => setTimeout(r, 2000));
+  
+  const browser = await chromium.launch({ headless: true });
+  
+  try {
+    const page = await browser.newPage({ viewport: { width: 500, height: 850 } });
+    await page.goto('http://localhost:3098/pixi.html', { waitUntil: 'networkidle', timeout: 30000 });
+    await page.waitForTimeout(4000);
+    await page.screenshot({ path: '/tmp/pixi-board-v2.png' });
+    console.log('Screenshot saved to /tmp/pixi-board-v2.png');
+    await page.close();
+  } catch (e) {
+    console.error('Error:', e.message);
+  }
   
   await browser.close();
-})();
+  vite.kill();
+}
+
+main().catch(console.error);

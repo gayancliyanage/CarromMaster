@@ -69,7 +69,6 @@ export class PremiumBoardRenderer {
 
   public async render(): Promise<void> {
     this.drawOuterFrame();
-    this.drawFrameCornerFlourishes();
     this.drawBoardSurface();
     this.drawWoodGrainTexture();
     this.drawBoundaryLines();
@@ -78,6 +77,8 @@ export class PremiumBoardRenderer {
     this.drawCenterMandala();
     this.drawSideMidpointCircles();
     this.drawPockets();
+    // Draw flourishes last so they appear on top
+    this.drawFrameCornerFlourishes();
   }
 
   private drawOuterFrame(): void {
@@ -175,16 +176,19 @@ export class PremiumBoardRenderer {
     const totalSize = boardSize + frameWidth * 2;
     const halfTotal = totalSize / 2;
     
-    // Position for each corner
+    // Position for each corner - inside the frame corners
+    // Offset from corner to place the flourish center
+    const offset = 50;
     const corners = [
-      { x: centerX - halfTotal + 20, y: centerY - halfTotal + 20, rotation: 0 },
-      { x: centerX + halfTotal - 20, y: centerY - halfTotal + 20, rotation: Math.PI / 2 },
-      { x: centerX + halfTotal - 20, y: centerY + halfTotal - 20, rotation: Math.PI },
-      { x: centerX - halfTotal + 20, y: centerY + halfTotal - 20, rotation: -Math.PI / 2 },
+      { x: centerX - halfTotal + offset, y: centerY - halfTotal + offset, rotation: 0 },           // Top-left
+      { x: centerX + halfTotal - offset, y: centerY - halfTotal + offset, rotation: Math.PI / 2 }, // Top-right
+      { x: centerX + halfTotal - offset, y: centerY + halfTotal - offset, rotation: Math.PI },     // Bottom-right
+      { x: centerX - halfTotal + offset, y: centerY + halfTotal - offset, rotation: -Math.PI / 2 }, // Bottom-left
     ];
     
     corners.forEach(corner => {
       const flourish = this.createVictorianScrollwork(corner.x, corner.y, corner.rotation);
+      flourish.scale.set(1.15); // Make flourishes larger
       this.container.addChild(flourish);
     });
   }
@@ -196,60 +200,151 @@ export class PremiumBoardRenderer {
     
     const g = new Graphics();
     const gold = this.colors.frameGoldLight;
+    const goldMid = this.colors.frameGold;
     const darkGold = this.colors.frameGoldDark;
     
-    // Main spiral scroll
-    g.moveTo(0, 0);
-    g.bezierCurveTo(15, -5, 25, -15, 20, -25);
-    g.bezierCurveTo(15, -35, 0, -30, 5, -20);
-    g.bezierCurveTo(10, -10, 20, -5, 30, -10);
-    g.stroke({ color: gold, width: 2.5 });
+    // === MAIN CORNER FLOURISH - Large ornate scrollwork ===
     
-    // Secondary scroll
-    g.moveTo(5, 5);
-    g.bezierCurveTo(15, 10, 30, 5, 35, -5);
-    g.bezierCurveTo(40, -15, 30, -25, 25, -15);
+    // Primary large spiral curl (main flourish)
+    g.moveTo(-5, 5);
+    g.bezierCurveTo(-15, 0, -25, -10, -30, -25);
+    g.bezierCurveTo(-32, -35, -25, -42, -15, -40);
+    g.bezierCurveTo(-5, -38, 0, -30, -5, -22);
+    g.bezierCurveTo(-10, -14, -18, -12, -22, -18);
+    g.stroke({ color: gold, width: 3.5 });
+    
+    // Secondary spiral curl (mirrored on other axis)
+    g.moveTo(5, -5);
+    g.bezierCurveTo(0, -15, -10, -25, -25, -30);
+    g.bezierCurveTo(-35, -32, -42, -25, -40, -15);
+    g.bezierCurveTo(-38, -5, -30, 0, -22, -5);
+    g.bezierCurveTo(-14, -10, -12, -18, -18, -22);
+    g.stroke({ color: gold, width: 3.5 });
+    
+    // Outer decorative swirl 1
+    g.moveTo(-8, -8);
+    g.bezierCurveTo(-20, -5, -35, -15, -45, -30);
+    g.bezierCurveTo(-50, -40, -45, -50, -35, -48);
+    g.stroke({ color: goldMid, width: 2.5 });
+    
+    // Outer decorative swirl 2
+    g.moveTo(-8, -8);
+    g.bezierCurveTo(-5, -20, -15, -35, -30, -45);
+    g.bezierCurveTo(-40, -50, -50, -45, -48, -35);
+    g.stroke({ color: goldMid, width: 2.5 });
+    
+    // === LEAF/ACANTHUS PATTERNS ===
+    
+    // Large leaf 1 (pointing diagonally outward)
+    this.drawAcanthusLeaf(g, -35, -35, Math.PI * 1.25, 18, gold, darkGold);
+    
+    // Large leaf 2 (pointing along X)
+    this.drawAcanthusLeaf(g, -42, -20, Math.PI, 14, gold, darkGold);
+    
+    // Large leaf 3 (pointing along Y)
+    this.drawAcanthusLeaf(g, -20, -42, Math.PI * 1.5, 14, gold, darkGold);
+    
+    // Small accent leaves
+    this.drawAcanthusLeaf(g, -25, -15, Math.PI * 0.8, 8, gold, darkGold);
+    this.drawAcanthusLeaf(g, -15, -25, Math.PI * 1.3, 8, gold, darkGold);
+    
+    // === SPIRAL TERMINATIONS (curled ends) ===
+    
+    // Spiral end 1
+    g.moveTo(-48, -35);
+    g.bezierCurveTo(-52, -30, -50, -25, -45, -27);
+    g.bezierCurveTo(-42, -28, -43, -32, -46, -33);
     g.stroke({ color: gold, width: 2 });
     
-    // Leaf/petal shapes
-    for (let i = 0; i < 3; i++) {
-      const angle = (i * 25 - 20) * Math.PI / 180;
-      const dist = 15 + i * 8;
-      const px = Math.cos(angle) * dist;
-      const py = Math.sin(angle) * dist;
+    // Spiral end 2
+    g.moveTo(-35, -48);
+    g.bezierCurveTo(-30, -52, -25, -50, -27, -45);
+    g.bezierCurveTo(-28, -42, -32, -43, -33, -46);
+    g.stroke({ color: gold, width: 2 });
+    
+    // === CENTRAL ROSETTE ===
+    
+    // Center flower/rosette
+    for (let i = 0; i < 8; i++) {
+      const angle = (i * Math.PI * 2) / 8 - Math.PI / 8;
+      const innerR = 4;
+      const outerR = 10;
       
-      // Petal shape
-      g.moveTo(px, py);
-      g.bezierCurveTo(px + 8, py - 4, px + 12, py - 10, px + 8, py - 15);
-      g.bezierCurveTo(px + 4, py - 10, px + 4, py - 4, px, py);
-      g.fill({ color: gold, alpha: 0.8 });
+      // Petal
+      g.moveTo(Math.cos(angle) * innerR, Math.sin(angle) * innerR);
+      g.bezierCurveTo(
+        Math.cos(angle - 0.3) * outerR, Math.sin(angle - 0.3) * outerR,
+        Math.cos(angle + 0.3) * outerR, Math.sin(angle + 0.3) * outerR,
+        Math.cos(angle) * innerR, Math.sin(angle) * innerR
+      );
+      g.fill({ color: gold, alpha: 0.7 });
       g.stroke({ color: darkGold, width: 1 });
     }
     
-    // Central rosette
-    for (let i = 0; i < 6; i++) {
-      const angle = (i * 60) * Math.PI / 180;
-      const x1 = Math.cos(angle) * 5;
-      const y1 = Math.sin(angle) * 5;
-      g.moveTo(0, 0);
-      g.lineTo(x1, y1);
-      g.stroke({ color: gold, width: 1.5 });
-    }
-    g.circle(0, 0, 3);
+    // Center dot
+    g.circle(0, 0, 4);
     g.fill({ color: gold });
+    g.stroke({ color: darkGold, width: 1 });
     
-    // Decorative dots
+    // === DECORATIVE DOTS AND ACCENTS ===
+    
     const dotPositions = [
-      { x: 25, y: -8 }, { x: 18, y: -22 }, { x: 35, y: -12 },
-      { x: 8, y: -12 }, { x: 30, y: 0 }
+      { x: -30, y: -10, r: 2.5 },
+      { x: -10, y: -30, r: 2.5 },
+      { x: -40, y: -40, r: 3 },
+      { x: -50, y: -25, r: 2 },
+      { x: -25, y: -50, r: 2 },
+      { x: -15, y: -15, r: 2 },
     ];
+    
     dotPositions.forEach(pos => {
-      g.circle(pos.x, pos.y, 2);
+      g.circle(pos.x, pos.y, pos.r);
       g.fill({ color: gold });
     });
     
+    // Small connecting curves
+    g.moveTo(-20, -10);
+    g.bezierCurveTo(-25, -8, -28, -12, -25, -18);
+    g.stroke({ color: goldMid, width: 1.5 });
+    
+    g.moveTo(-10, -20);
+    g.bezierCurveTo(-8, -25, -12, -28, -18, -25);
+    g.stroke({ color: goldMid, width: 1.5 });
+    
     container.addChild(g);
     return container;
+  }
+  
+  private drawAcanthusLeaf(
+    g: Graphics, 
+    x: number, 
+    y: number, 
+    angle: number, 
+    size: number,
+    fillColor: number,
+    strokeColor: number
+  ): void {
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    
+    // Leaf shape with curves
+    const tipX = x + cos * size;
+    const tipY = y + sin * size;
+    const leftX = x + Math.cos(angle + 0.6) * size * 0.5;
+    const leftY = y + Math.sin(angle + 0.6) * size * 0.5;
+    const rightX = x + Math.cos(angle - 0.6) * size * 0.5;
+    const rightY = y + Math.sin(angle - 0.6) * size * 0.5;
+    
+    g.moveTo(x, y);
+    g.bezierCurveTo(leftX, leftY, tipX - sin * 3, tipY + cos * 3, tipX, tipY);
+    g.bezierCurveTo(tipX + sin * 3, tipY - cos * 3, rightX, rightY, x, y);
+    g.fill({ color: fillColor, alpha: 0.6 });
+    g.stroke({ color: strokeColor, width: 1.5 });
+    
+    // Center vein
+    g.moveTo(x, y);
+    g.lineTo(tipX * 0.85 + x * 0.15, tipY * 0.85 + y * 0.15);
+    g.stroke({ color: strokeColor, width: 1, alpha: 0.7 });
   }
 
   private drawBoardSurface(): void {
@@ -412,55 +507,59 @@ export class PremiumBoardRenderer {
     const { centerX, centerY, boardSize } = this.config;
     const halfSize = boardSize / 2;
     
-    // Arrow positions - curved arrows pointing to corners
+    // Arrow positions - curved arrows pointing to corners with hook ends
     const arrows = [
       { // Top-left
-        startX: centerX - 75, startY: centerY - 75,
-        endX: centerX - halfSize + 35, endY: centerY - halfSize + 35,
-        curveX: centerX - halfSize + 60, curveY: centerY - 75
+        startX: centerX - 80, startY: centerY - 80,
+        midX: centerX - halfSize + 75, midY: centerY - halfSize + 75,
+        endX: centerX - halfSize + 45, endY: centerY - halfSize + 45,
+        hookDir: { x: 1, y: 0 } // Hook curls right
       },
       { // Top-right
-        startX: centerX + 75, startY: centerY - 75,
-        endX: centerX + halfSize - 35, endY: centerY - halfSize + 35,
-        curveX: centerX + halfSize - 60, curveY: centerY - 75
+        startX: centerX + 80, startY: centerY - 80,
+        midX: centerX + halfSize - 75, midY: centerY - halfSize + 75,
+        endX: centerX + halfSize - 45, endY: centerY - halfSize + 45,
+        hookDir: { x: 0, y: 1 } // Hook curls down
       },
       { // Bottom-left
-        startX: centerX - 75, startY: centerY + 75,
-        endX: centerX - halfSize + 35, endY: centerY + halfSize - 35,
-        curveX: centerX - halfSize + 60, curveY: centerY + 75
+        startX: centerX - 80, startY: centerY + 80,
+        midX: centerX - halfSize + 75, midY: centerY + halfSize - 75,
+        endX: centerX - halfSize + 45, endY: centerY + halfSize - 45,
+        hookDir: { x: 0, y: -1 } // Hook curls up
       },
       { // Bottom-right
-        startX: centerX + 75, startY: centerY + 75,
-        endX: centerX + halfSize - 35, endY: centerY + halfSize - 35,
-        curveX: centerX + halfSize - 60, curveY: centerY + 75
+        startX: centerX + 80, startY: centerY + 80,
+        midX: centerX + halfSize - 75, midY: centerY + halfSize - 75,
+        endX: centerX + halfSize - 45, endY: centerY + halfSize - 45,
+        hookDir: { x: -1, y: 0 } // Hook curls left
       }
     ];
     
     arrows.forEach(arrow => {
-      // Curved arrow path
+      // Main curved arrow path
       g.moveTo(arrow.startX, arrow.startY);
-      g.quadraticCurveTo(arrow.curveX, arrow.curveY, arrow.endX, arrow.endY);
-      g.stroke({ color: this.colors.gold, width: 2, alpha: 0.6 });
+      g.quadraticCurveTo(arrow.midX, arrow.midY, arrow.endX, arrow.endY);
+      g.stroke({ color: this.colors.gold, width: 2.5, alpha: 0.7 });
       
-      // Arrow head
-      const angle = Math.atan2(arrow.endY - arrow.curveY, arrow.endX - arrow.curveX);
-      const headLen = 8;
-      const headAngle = 0.5;
+      // Hook/curl at the end (like a shepherd's crook)
+      const hookSize = 12;
+      const hookEndX = arrow.endX + arrow.hookDir.x * hookSize;
+      const hookEndY = arrow.endY + arrow.hookDir.y * hookSize;
+      const hookCtrlX = arrow.endX + arrow.hookDir.x * hookSize * 0.7 + arrow.hookDir.y * hookSize * 0.5;
+      const hookCtrlY = arrow.endY + arrow.hookDir.y * hookSize * 0.7 - arrow.hookDir.x * hookSize * 0.5;
       
       g.moveTo(arrow.endX, arrow.endY);
-      g.lineTo(
-        arrow.endX - headLen * Math.cos(angle - headAngle),
-        arrow.endY - headLen * Math.sin(angle - headAngle)
-      );
-      g.moveTo(arrow.endX, arrow.endY);
-      g.lineTo(
-        arrow.endX - headLen * Math.cos(angle + headAngle),
-        arrow.endY - headLen * Math.sin(angle + headAngle)
-      );
-      g.stroke({ color: this.colors.gold, width: 2, alpha: 0.6 });
+      g.quadraticCurveTo(hookCtrlX, hookCtrlY, hookEndX, hookEndY);
+      g.stroke({ color: this.colors.gold, width: 2.5, alpha: 0.7 });
       
-      // Small circle at start of arrow
-      g.circle(arrow.startX, arrow.startY, 5);
+      // Small filled circle at hook end
+      g.circle(hookEndX, hookEndY, 3);
+      g.fill({ color: this.colors.gold, alpha: 0.8 });
+      
+      // Circle at start of arrow
+      g.circle(arrow.startX, arrow.startY, 6);
+      g.stroke({ color: this.colors.gold, width: 2, alpha: 0.6 });
+      g.circle(arrow.startX, arrow.startY, 3);
       g.fill({ color: this.colors.gold, alpha: 0.5 });
     });
     
