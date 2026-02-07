@@ -25,15 +25,15 @@ export const COLORS = {
   bgGradientBottom: 0x1a0a2e, // Dark purple bottom
   
   // Board
-  board: 0xd4a574,            // Light wood
-  boardDark: 0xb8956a,        // Darker wood grain
-  boardBorder: 0xc9a227,      // Gold border
-  boardFrame: 0x3d2314,       // Dark wood frame (like real carrom)
+  board: 0xf5e6c8,            // Light cream wood (like real carrom)
+  boardDark: 0x2d1810,        // Dark lines
+  boardBorder: 0x1a1a1a,      // Black border lines
+  boardFrame: 0x2d1810,       // Dark brown wood frame
   
   // Pockets
   pocket: 0x1a1a1a,           // Black pocket
-  pocketRing: 0xffd700,       // Gold ring around pocket
-  pocketHighlight: 0xffeb3b,  // Yellow highlight
+  pocketRing: 0xc0c0c0,       // Silver ring (like real carrom)
+  pocketHighlight: 0xe8e8e8,  // Light silver highlight
   
   // Pieces
   whitePiece: 0xfff8e7,       // Cream white

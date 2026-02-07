@@ -203,53 +203,70 @@ export class GameScene extends Phaser.Scene {
     const x = this.boardCenterX;
     const y = this.boardCenterY;
     const size = BOARD_SIZE;
-    const playArea = size - 50; // Actual play area size
-    const frameWidth = 30;
+    const playArea = size - 50;
+    const frameWidth = 28;
     const graphics = this.add.graphics();
 
-    // 1. Dark wood frame (outermost) - like real carrom board
+    // 1. Dark wood frame (outermost)
     graphics.fillStyle(COLORS.boardFrame);
     graphics.fillRoundedRect(
       x - playArea / 2 - frameWidth, 
       y - playArea / 2 - frameWidth, 
       playArea + frameWidth * 2, 
       playArea + frameWidth * 2,
-      6
+      4
     );
 
-    // 2. Main board surface (playing area) - light wood
+    // 2. Main board surface (light cream wood)
     graphics.fillStyle(COLORS.board);
     graphics.fillRect(x - playArea / 2, y - playArea / 2, playArea, playArea);
 
-    // 3. Wood grain effect (subtle)
-    graphics.lineStyle(1, COLORS.boardDark, 0.08);
-    for (let i = 0; i < 25; i++) {
-      const lineY = y - playArea / 2 + (playArea / 25) * i;
+    // 3. Subtle wood grain
+    graphics.lineStyle(1, 0xddd5c0, 0.5);
+    for (let i = 0; i < 30; i++) {
+      const lineY = y - playArea / 2 + (playArea / 30) * i;
       graphics.beginPath();
       graphics.moveTo(x - playArea / 2, lineY);
       graphics.lineTo(x + playArea / 2, lineY);
       graphics.strokePath();
     }
 
-    // 4. Black border lines (like real carrom board)
-    const borderInset = 15;
-    graphics.lineStyle(3, 0x000000, 1);
+    // 4. Outer black border line
+    const outerInset = 12;
+    graphics.lineStyle(2.5, 0x000000, 1);
     graphics.strokeRect(
-      x - playArea / 2 + borderInset, 
-      y - playArea / 2 + borderInset, 
-      playArea - borderInset * 2, 
-      playArea - borderInset * 2
+      x - playArea / 2 + outerInset, 
+      y - playArea / 2 + outerInset, 
+      playArea - outerInset * 2, 
+      playArea - outerInset * 2
     );
 
-    // 5. Inner decorative border (thinner)
-    const innerMargin = 35;
-    graphics.lineStyle(2, 0x000000, 0.8);
+    // 5. Inner black border line
+    const innerInset = 32;
+    graphics.lineStyle(2, 0x000000, 1);
     graphics.strokeRect(
-      x - playArea / 2 + innerMargin, 
-      y - playArea / 2 + innerMargin, 
-      playArea - innerMargin * 2, 
-      playArea - innerMargin * 2
+      x - playArea / 2 + innerInset, 
+      y - playArea / 2 + innerInset, 
+      playArea - innerInset * 2, 
+      playArea - innerInset * 2
     );
+
+    // 6. Red circles at corners and midpoints of inner border
+    const redCircleRadius = 5;
+    const cornerOffset = playArea / 2 - innerInset;
+    
+    // Corner red circles
+    graphics.fillStyle(0xdc3545);
+    graphics.fillCircle(x - cornerOffset, y - cornerOffset, redCircleRadius);
+    graphics.fillCircle(x + cornerOffset, y - cornerOffset, redCircleRadius);
+    graphics.fillCircle(x - cornerOffset, y + cornerOffset, redCircleRadius);
+    graphics.fillCircle(x + cornerOffset, y + cornerOffset, redCircleRadius);
+    
+    // Midpoint red circles
+    graphics.fillCircle(x, y - cornerOffset, redCircleRadius);
+    graphics.fillCircle(x, y + cornerOffset, redCircleRadius);
+    graphics.fillCircle(x - cornerOffset, y, redCircleRadius);
+    graphics.fillCircle(x + cornerOffset, y, redCircleRadius);
 
     // Center design
     this.drawCenterDesign(graphics, x, y);
@@ -265,33 +282,53 @@ export class GameScene extends Phaser.Scene {
   }
 
   private drawCenterDesign(graphics: Phaser.GameObjects.Graphics, x: number, y: number): void {
-    // Outer decorative circle
-    graphics.lineStyle(3, COLORS.boardDark, 0.4);
-    graphics.strokeCircle(x, y, 70);
+    // Outer circle
+    graphics.lineStyle(2, 0x000000, 0.8);
+    graphics.strokeCircle(x, y, 60);
     
-    // Inner decorative pattern
-    graphics.lineStyle(2, COLORS.boardDark, 0.3);
-    graphics.strokeCircle(x, y, 55);
+    // Inner circle
+    graphics.lineStyle(1.5, 0x000000, 0.6);
+    graphics.strokeCircle(x, y, 45);
+
+    // Draw 8-point star pattern (like real carrom)
+    const outerRadius = 40;
+    const innerRadius = 15;
     
-    // Center circle
-    graphics.lineStyle(2, COLORS.boardDark, 0.5);
-    graphics.strokeCircle(x, y, 25);
-
-    // Small center dot
-    graphics.fillStyle(COLORS.boardDark, 0.3);
-    graphics.fillCircle(x, y, 5);
-
-    // Decorative petals/arcs
+    // Draw alternating red and black star points
     for (let i = 0; i < 8; i++) {
-      const angle = (i * Math.PI) / 4;
-      const innerR = 30;
-      const outerR = 65;
-      graphics.lineStyle(1, COLORS.boardDark, 0.2);
+      const angle = (i * Math.PI) / 4 - Math.PI / 2;
+      const nextAngle = angle + Math.PI / 8;
+      const prevAngle = angle - Math.PI / 8;
+      
+      // Alternate colors: red and black
+      const color = i % 2 === 0 ? 0xdc3545 : 0x1a1a1a;
+      graphics.fillStyle(color);
+      
       graphics.beginPath();
-      graphics.moveTo(x + Math.cos(angle) * innerR, y + Math.sin(angle) * innerR);
-      graphics.lineTo(x + Math.cos(angle) * outerR, y + Math.sin(angle) * outerR);
-      graphics.strokePath();
+      graphics.moveTo(x, y);
+      graphics.lineTo(
+        x + Math.cos(prevAngle) * innerRadius,
+        y + Math.sin(prevAngle) * innerRadius
+      );
+      graphics.lineTo(
+        x + Math.cos(angle) * outerRadius,
+        y + Math.sin(angle) * outerRadius
+      );
+      graphics.lineTo(
+        x + Math.cos(nextAngle) * innerRadius,
+        y + Math.sin(nextAngle) * innerRadius
+      );
+      graphics.closePath();
+      graphics.fillPath();
     }
+
+    // Center red circle
+    graphics.fillStyle(0xdc3545);
+    graphics.fillCircle(x, y, 8);
+    
+    // Small black center dot
+    graphics.fillStyle(0x000000);
+    graphics.fillCircle(x, y, 3);
   }
 
   private drawCornerLines(graphics: Phaser.GameObjects.Graphics, x: number, y: number, size: number): void {
